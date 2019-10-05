@@ -25,7 +25,6 @@ import org.jetbrains.annotations.NotNull;
 import com.google.common.base.Functions;
 
 /**
- * Utility methods for iterators.
  *
  * @author Dmitry Schitinin
  */
