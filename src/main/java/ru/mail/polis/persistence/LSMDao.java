@@ -20,7 +20,7 @@ public class LSMDao implements DAO {
     private static final String TABLE_NAME = "SSTable";
     private static final String SUFFIX = ".dat";
     private static final String TEMP = ".tmp";
-    private static final int DANGER_COUNT_FILES = 5;
+    private static final int DANGER_COUNT_FILES = 1000;
     private final MemoryTablePool tablePool;
     private final File base;
     private List<Table> fileTables;
@@ -35,9 +35,9 @@ public class LSMDao implements DAO {
         public void run() {
             boolean poisonReceived = false;
             while (!isInterrupted() && !poisonReceived) {
-                FlushTable flushTable = null;
+                FlushTable flushTable;
                 try {
-                    flushTable = tablePool.takeTOFlush();
+                    flushTable = tablePool.toFlush();
                     poisonReceived = flushTable.isPoisonPill();
                     flush(flushTable.getGeneration(), flushTable.getTable());
                     tablePool.flushed(flushTable.getGeneration());
@@ -119,7 +119,7 @@ public class LSMDao implements DAO {
 
     private void updateData() throws IOException {
         if (fileTables.size() > DANGER_COUNT_FILES) {
-            mergeTables(0, fileTables.size() >> 1, tablePool.getLastGeneration());
+            mergeTables(0, fileTables.size() / 2, tablePool.getLastFlushedGeneration());
         }
     }
 
@@ -148,26 +148,6 @@ public class LSMDao implements DAO {
     @Override
     public void remove(@NotNull final ByteBuffer key) throws IOException {
         tablePool.remove(key);
-    }
-
-    @NotNull
-    @Override
-    public ByteBuffer get(@NotNull final ByteBuffer key) throws IOException, NoSuchElementException {
-        Cell actualCell = tablePool.get(key);
-        for (final Table table : fileTables) {
-            final Cell cell = table.get(key);
-            if (cell == null) {
-                continue;
-            }
-            if (actualCell == null || Cell.COMPARATOR.compare(cell, actualCell) < 0) {
-                actualCell = cell;
-            }
-        }
-        if (actualCell == null || actualCell.getValue().isRemoved()) {
-            throw new NoSuchElementException("");
-        }
-        final Record record = Record.of(actualCell.getKey(), actualCell.getValue().getData());
-        return record.getValue();
     }
 
     /**
@@ -210,6 +190,6 @@ public class LSMDao implements DAO {
 
     @Override
     public void compact() throws IOException {
-        mergeTables(0, fileTables.size(), tablePool.getLastGeneration() + 1);
+        mergeTables(0, fileTables.size(), tablePool.getLastFlushedGeneration() + 1);
     }
 }
