@@ -3,20 +3,21 @@ package ru.mail.polis.persistence;
 import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
 
+import javax.annotation.concurrent.ThreadSafe;
 import java.nio.ByteBuffer;
-import java.util.BitSet;
-import java.util.Iterator;
-import java.util.NavigableMap;
-import java.util.TreeMap;
+import java.util.*;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicLong;
 
+@ThreadSafe
 public class MemTable implements Table {
-    private final NavigableMap<ByteBuffer, Value> map = new TreeMap<>();
-    private long sizeInBytes;
+    private final SortedMap<ByteBuffer, Value> map = new ConcurrentSkipListMap<>();
+    private AtomicLong sizeInBytes = new AtomicLong(0);
     private final BitSet bloomFilter = new BitSet();
 
     @Override
     public long sizeInBytes() {
-        return sizeInBytes;
+        return sizeInBytes.get();
     }
 
     @NotNull
@@ -36,11 +37,11 @@ public class MemTable implements Table {
     public void upsert(@NotNull final ByteBuffer key, @NotNull final ByteBuffer value) {
         final Value previous = map.put(key, Value.of(value));
         if (previous == null) {
-            sizeInBytes += key.remaining() + value.remaining();
+            sizeInBytes.addAndGet(key.remaining() + value.remaining());
         } else if (previous.isRemoved()) {
-            sizeInBytes += value.remaining();
+            sizeInBytes.addAndGet(value.remaining());
         } else {
-            sizeInBytes += value.remaining() - previous.getData().remaining();
+            sizeInBytes.addAndGet(value.remaining() - previous.getData().remaining());
         }
         BloomFilter.setKeyToFilter(bloomFilter, key);
     }
@@ -49,9 +50,9 @@ public class MemTable implements Table {
     public void remove(@NotNull final ByteBuffer key) {
         final Value previous = map.put(key, Value.tombstone());
         if (previous == null) {
-            sizeInBytes += key.remaining();
+            sizeInBytes.addAndGet(key.remaining());
         } else if (!previous.isRemoved()) {
-            sizeInBytes -= previous.getData().remaining();
+            sizeInBytes.addAndGet(-previous.getData().remaining());
         }
         BloomFilter.setKeyToFilter(bloomFilter, key);
     }
@@ -77,6 +78,6 @@ public class MemTable implements Table {
     public void clear() {
         map.clear();
         bloomFilter.clear();
-        sizeInBytes = 0;
+        sizeInBytes.set(0);
     }
 }
