@@ -2,13 +2,17 @@
 *
 
 # But not Java files...
+!.gitignore
 !*.java
 !README.md
 !LICENSE
-!gradle/wrapper/*
 !gradlew.bat
 !gradlew
 !build.gradle.kts
+!.travis.yml
+!settings.gradle
+!checkstyle.xml
+!.codeclimate.yml
 
 # ...even if they are in subdirectories
 !*/
