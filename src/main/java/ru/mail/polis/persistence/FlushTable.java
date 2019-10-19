@@ -19,7 +19,7 @@ public class FlushTable {
     }
 
     /**
-     * Standart constructor without poisonPill
+     * Standart constructor without poisonPill.
      *
      * @param table of flush
      * @param generation is death for dao?

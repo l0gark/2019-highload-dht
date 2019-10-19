@@ -142,7 +142,6 @@ public class FileTable implements Table {
         return new Cell(key.slice(), Value.of(timeStamp, value.slice()));
     }
 
-
     public static int fromPath(final Path path) {
         return fromFileName(path.getFileName().toString());
     }

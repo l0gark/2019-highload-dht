@@ -37,12 +37,12 @@ public class LSMDao implements DAO {
     private final Thread flusherThread;
 
     /**
-     * Create persistence DAO.
-     * <p>
-     * //     * @param file       database location
-     * //     * @param flushLimit when we should write to disk
+     * DAO Implementation.
      *
-     * @throws IOException if I/O error
+     * @param file baseFile
+     * @param flushLimit max heap
+     * @param queueCapacity capacity of queue
+     * @throws IOException when io error
      */
     public LSMDao(@NotNull final File file, final long flushLimit, final int queueCapacity) throws IOException {
         assert flushLimit >= 0L;
