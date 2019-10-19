@@ -4,9 +4,12 @@ import com.google.common.collect.Iterators;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.Iters;
+import ru.mail.polis.service.StorageSession;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,9 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 public class LSMDao implements DAO {
-    public static final String SUFFIX_DAT = ".dat";
-    private static final String SUFFIX_TMP = ".tmp";
-    public static final String PREFIX_FILE = "TABLE";
+    static final String SUFFIX_DAT = ".dat";
+    static final String SUFFIX_TMP = ".tmp";
+    static final String PREFIX_FILE = "TABLE";
+    private final Logger log = LoggerFactory.getLogger(this.getClass());
 
     private final File file;
     private final MemoryTablePool memTablePool;
@@ -38,8 +42,6 @@ public class LSMDao implements DAO {
     private Thread flusherThread;
 
 //    private int gen = 0;
-
-    private Log log = LogFactory.getLog(this.getClass());
 
     private AtomicInteger generationToCompact = new AtomicInteger(0);
 
@@ -71,7 +73,7 @@ public class LSMDao implements DAO {
                             }
                             fileTables.put(currGen, new FileTable(path.toFile()));
                         } catch (IOException e) {
-                            e.printStackTrace();
+                            log.error("Something go wrong in reading SSTables, ", e);
                         }
                     });
         }
@@ -214,7 +216,7 @@ public class LSMDao implements DAO {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (IOException e) {
-                    log.error("Error while flushing {} in generation " + tableToFlush.getGeneration(), e);
+                    log.error("Error while flushing {} in generation ", tableToFlush.getGeneration(), e);
                 }
 
             }

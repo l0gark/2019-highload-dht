@@ -15,4 +15,11 @@ public final class Bytes {
         final ByteBuffer result = ByteBuffer.allocate(Long.BYTES);
         return result.putLong(value).rewind();
     }
+
+    public static byte[] toArray(final ByteBuffer byteBuffer){
+        final ByteBuffer duplicate = byteBuffer.duplicate();
+        final byte[] array = new byte[duplicate.remaining()];
+        duplicate.get(array);
+        return array;
+    }
 }

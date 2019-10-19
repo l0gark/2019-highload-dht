@@ -40,7 +40,7 @@ class AllDeadTest extends TestBase {
 
     private static final int TOMBSTONES_COUNT = 1000000;
 
-    @RepeatedTest(15)
+    @Test
     void deadAll(@TempDir File data) throws IOException {
         // Create, fill, read and remove
         try (DAO dao = DAOFactory.create(data)) {

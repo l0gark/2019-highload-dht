@@ -55,9 +55,9 @@ public class MemoryTablePool implements Table, Closeable {
 
     @Override
     public Iterator<Cell> iterator(@NotNull ByteBuffer from) throws IOException {
-        lock.readLock().lock();
         final List<Iterator<Cell>> list;
 
+        lock.readLock().lock();
         try {
             list = new ArrayList<>(pendingFlush.size() + 1);
             for (final Table fileChannelTable : pendingFlush.values()) {
@@ -116,8 +116,9 @@ public class MemoryTablePool implements Table, Closeable {
 
     private void syncAddToFlush() {
         if (current.sizeInBytes() > memFlushThreshHold) {
-            lock.writeLock().lock();
             FlushTable toFlush = null;
+
+            lock.writeLock().lock();
             try {
                 if (current.sizeInBytes() > memFlushThreshHold) {
 
@@ -144,8 +145,9 @@ public class MemoryTablePool implements Table, Closeable {
         if (!stop.compareAndSet(false, true)) {
             return;
         }
-        lock.writeLock().lock();
         final FlushTable toFlush;
+
+        lock.writeLock().lock();
         try {
             pendingFlush.put(generation, current);
             toFlush = new FlushTable(current, generation, true);

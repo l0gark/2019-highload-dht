@@ -2,6 +2,8 @@ package ru.mail.polis.persistence;
 
 import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.dao.Iters;
 
 import java.io.File;
@@ -23,6 +25,8 @@ public class FileTable implements Table {
     private final LongBuffer offsets;
     private final ByteBuffer cells;
     private final File file;
+
+    private static final Logger log = LoggerFactory.getLogger(FileTable.class);
 
     /**
      * Creates instance of FileTable and get data from file.
@@ -175,7 +179,7 @@ public class FileTable implements Table {
         final int keySize = cells.getInt((int) offset);
         offset += Integer.BYTES;
         final ByteBuffer key = cells.duplicate();
-        key.position((int) (offset));
+        key.position((int) offset);
         key.limit(key.position() + keySize);
         offset += keySize;
 
@@ -197,7 +201,7 @@ public class FileTable implements Table {
     }
 
 
-    public static int fromPath(final Path path){
+    public static int fromPath(final Path path) {
         return fromFileName(path.getFileName().toString());
     }
 
@@ -207,11 +211,11 @@ public class FileTable implements Table {
      * @param fileName name of FileTable file
      * @return generation number
      */
-    private static int fromFileName(final String fileName){
+    private static int fromFileName(final String fileName) {
         final String pattern = LSMDao.PREFIX_FILE + "(\\d+)" + LSMDao.SUFFIX_DAT;
         final Pattern regex = Pattern.compile(pattern);
         final Matcher matcher = regex.matcher(fileName);
-        if (matcher.find()){
+        if (matcher.find()) {
             return Integer.parseInt(matcher.group(1));
         }
         return -1;
@@ -246,7 +250,7 @@ public class FileTable implements Table {
             try {
                 list.add(table.iterator(ByteBuffer.allocate(0)));
             } catch (IOException e) {
-                e.printStackTrace();
+                log.error("IOException in merge SSTables iterators : ", e);
             }
         }
 
