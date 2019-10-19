@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class MemTable implements Table {
     private final SortedMap<ByteBuffer, Value> map = new ConcurrentSkipListMap<>();
     private AtomicLong sizeInBytes = new AtomicLong(0);
-    private final BitSet bloomFilter = new BitSet();
 
     @Override
     public long sizeInBytes() {
@@ -43,7 +42,6 @@ public class MemTable implements Table {
         } else {
             sizeInBytes.addAndGet(value.remaining() - previous.getData().remaining());
         }
-        BloomFilter.setKeyToFilter(bloomFilter, key);
     }
 
     @Override
@@ -54,30 +52,6 @@ public class MemTable implements Table {
         } else if (!previous.isRemoved()) {
             sizeInBytes.addAndGet(-previous.getData().remaining());
         }
-        BloomFilter.setKeyToFilter(bloomFilter, key);
     }
 
-    @Override
-    public Cell get(@NotNull final ByteBuffer key) {
-        if (!BloomFilter.canContains(bloomFilter, key)) {
-            return null;
-        }
-        final Value value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        return new Cell(key, value);
-    }
-
-    @Override
-    public BitSet getBloomFilter() {
-        return bloomFilter;
-    }
-
-    @Override
-    public void clear() {
-        map.clear();
-        bloomFilter.clear();
-        sizeInBytes.set(0);
-    }
 }

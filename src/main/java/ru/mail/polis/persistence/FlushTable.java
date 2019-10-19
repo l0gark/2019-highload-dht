@@ -5,13 +5,13 @@ public class FlushTable {
     private final Table table;
     private final boolean poisonPill;
 
-    public FlushTable(Table table, int generation, boolean poisonPill) {
+    public FlushTable(final Table table, final int generation, final boolean poisonPill) {
         this.generation = generation;
         this.table = table;
         this.poisonPill = poisonPill;
     }
 
-    public FlushTable(Table table, int generation) {
+    public FlushTable(final Table table, final int generation) {
         this(table, generation, false);
     }
 

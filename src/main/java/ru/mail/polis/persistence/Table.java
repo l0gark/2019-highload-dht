@@ -24,12 +24,6 @@ public interface Table {
 
     void remove(@NotNull ByteBuffer key) throws IOException;
 
-    void clear() throws IOException;
-
-    Cell get(@NotNull ByteBuffer key) throws IOException;
-
-    BitSet getBloomFilter();
-
     /**
      * Dump to the file in directory.
      * List of Cells
@@ -41,15 +35,13 @@ public interface Table {
      * valueSize - Integer
      * value - ByteBuffer sizeOf(value) = valueSize.
      * -offsets LongBuffer
-     * -BloomFilter IntBuffer
-     * -BloomFilterSize Integer
      * -count rows Long
      *
      * @param cells iterator of data
      * @param to    directory
      * @throws IOException If an I/O error occurs
      */
-    static void write(final Iterator<Cell> cells, final File to, final BitSet bloomFilter) throws IOException {
+    static void write(final Iterator<Cell> cells, final File to) throws IOException {
         try (FileChannel fc = FileChannel.open(to.toPath(),
                 StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE)) {
@@ -95,13 +87,6 @@ public interface Table {
             for (final long anOffset : offsets) {
                 fc.write(Bytes.fromLong(anOffset));
             }
-
-            // BloomFilter
-            final long[] bloomFilterArray = bloomFilter.toLongArray();
-            for (final long bit : bloomFilterArray) {
-                fc.write(Bytes.fromLong(bit));
-            }
-            fc.write(Bytes.fromInt(bloomFilterArray.length));
 
             // Rows
             fc.write(Bytes.fromLong(offsets.size()));

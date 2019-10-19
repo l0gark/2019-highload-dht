@@ -24,8 +24,6 @@ public class MemoryTablePool implements Table, Closeable {
     private NavigableMap<Integer, MemTable> pendingFlush;
     private BlockingQueue<FlushTable> flushQueue;
 
-    private final AtomicBoolean compacting = new AtomicBoolean(false);
-
     private final long memFlushThreshHold;
 
     private int generation;
@@ -57,7 +55,6 @@ public class MemoryTablePool implements Table, Closeable {
 
     @Override
     public Iterator<Cell> iterator(@NotNull ByteBuffer from) throws IOException {
-
         lock.readLock().lock();
         final List<Iterator<Cell>> list;
 
@@ -72,16 +69,9 @@ public class MemoryTablePool implements Table, Closeable {
             lock.readLock().unlock();
         }
 
-        final Iterator<Cell> iterator = Iters.collapseEquals(Iterators.mergeSorted(list, Cell.COMPARATOR),
+        //noinspection UnstableApiUsage
+        return Iters.collapseEquals(Iterators.mergeSorted(list, Cell.COMPARATOR),
                 Cell::getKey);
-
-        Iterator<Cell> cellFull = Iterators.filter(
-                iterator,
-                cell -> {
-                    assert cell != null;
-                    return !cell.getValue().isRemoved();
-                });
-        return cellFull;
     }
 
     @Override
@@ -102,21 +92,6 @@ public class MemoryTablePool implements Table, Closeable {
         syncAddToFlush();
     }
 
-    @Override
-    public void clear() throws IOException {
-
-    }
-
-    @Override
-    public Cell get(@NotNull ByteBuffer key) throws IOException {
-        return null;
-    }
-
-    @Override
-    public BitSet getBloomFilter() {
-        return null;
-    }
-
     public FlushTable toFlush() throws InterruptedException {
         return flushQueue.take();
     }
@@ -128,14 +103,15 @@ public class MemoryTablePool implements Table, Closeable {
         } finally {
             lock.writeLock().unlock();
         }
+
         if (generation > lastFlushedGeneration.get()) {
             lastFlushedGeneration.set(generation);
         }
 
     }
 
-    public int getLastFlushedGeneration() {
-        return lastFlushedGeneration.get();
+    public AtomicInteger getLastFlushedGeneration() {
+        return lastFlushedGeneration;
     }
 
     private void syncAddToFlush() {
@@ -155,23 +131,17 @@ public class MemoryTablePool implements Table, Closeable {
             }
             if (toFlush != null) {
                 try {
-
                     flushQueue.put(toFlush);
                 } catch (InterruptedException e) {
-                    System.out.println("Thread interrupted");
                     Thread.currentThread().interrupt();
                 }
             }
-
-
         }
     }
 
-
     @Override
-    public void close() throws IOException {
+    public void close() {
         if (!stop.compareAndSet(false, true)) {
-            System.out.println("Stopped");
             return;
         }
         lock.writeLock().lock();
@@ -182,12 +152,11 @@ public class MemoryTablePool implements Table, Closeable {
         } finally {
             lock.writeLock().unlock();
         }
-        try {
 
+        try {
             flushQueue.put(toFlush);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-
     }
 }

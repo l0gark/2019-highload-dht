@@ -99,6 +99,7 @@ class PersistenceTest extends TestBase {
 
             // Remove data and flush
             dao.remove(key);
+            assertThrows(NoSuchElementException.class, () -> dao.get(key));
         }
 
         // Load and check not found
@@ -107,7 +108,7 @@ class PersistenceTest extends TestBase {
         }
     }
 
-    @RepeatedTest(1000)
+    @RepeatedTest(10)
     void replaceWithClose(@TempDir File data) throws Exception {
         final ByteBuffer key = randomKeyBuffer();
         final ByteBuffer value = randomValueBuffer();
