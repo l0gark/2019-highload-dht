@@ -39,8 +39,8 @@ public class LSMDao implements DAO {
     /**
      * DAO Implementation.
      *
-     * @param file baseFile
-     * @param flushLimit max heap
+     * @param file          baseFile
+     * @param flushLimit    max heap
      * @param queueCapacity capacity of queue
      * @throws IOException when io error
      */
@@ -146,9 +146,7 @@ public class LSMDao implements DAO {
 
     @Override
     public void compact() throws IOException {
-        int generation = memTablePool.getLastFlushedGeneration().get();
-        System.out.println("Compact generation " + generation + " by thread " + Thread.currentThread().getName());
-
+        final int generation = memTablePool.getLastFlushedGeneration().get();
 
         final String tempFilename = PREFIX_FILE + generation + SUFFIX_TMP;
         final String filename = PREFIX_FILE + generation + SUFFIX_DAT;
@@ -205,7 +203,7 @@ public class LSMDao implements DAO {
 
             }
             if (!isInterrupted()) {
-                System.out.println("Dead after poison");
+                log.info("Dead after poison!");
             }
         }
     }

@@ -24,23 +24,23 @@ public class MemoryTablePool implements Table, Closeable {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     private volatile MemTable current;
-    private NavigableMap<Integer, MemTable> pendingFlush;
-    private BlockingQueue<FlushTable> flushQueue;
+    private final NavigableMap<Integer, MemTable> pendingFlush;
+    private final BlockingQueue<FlushTable> flushQueue;
 
     private final long memFlushThreshHold;
 
     private int generation;
 
-    private AtomicInteger lastFlushedGeneration = new AtomicInteger(0);
+    private final AtomicInteger lastFlushedGeneration = new AtomicInteger(0);
 
-    private AtomicBoolean stop = new AtomicBoolean(false);
+    private final AtomicBoolean stop = new AtomicBoolean(false);
 
     /**
      * Pool of MemTable.
      *
      * @param memFlushThreshHold when flush to disk
-     * @param startGeneration begin generation
-     * @param queueCapacity capacity of queue
+     * @param startGeneration    begin generation
+     * @param queueCapacity      capacity of queue
      */
     public MemoryTablePool(final long memFlushThreshHold, final int startGeneration, final int queueCapacity) {
         this.memFlushThreshHold = memFlushThreshHold;
@@ -63,7 +63,7 @@ public class MemoryTablePool implements Table, Closeable {
     }
 
     @Override
-    public Iterator<Cell> iterator(@NotNull ByteBuffer from) throws IOException {
+    public Iterator<Cell> iterator(@NotNull final ByteBuffer from) throws IOException {
         final List<Iterator<Cell>> list;
 
         lock.readLock().lock();
@@ -84,7 +84,7 @@ public class MemoryTablePool implements Table, Closeable {
     }
 
     @Override
-    public void upsert(@NotNull ByteBuffer key, @NotNull ByteBuffer value) {
+    public void upsert(@NotNull final ByteBuffer key, @NotNull final ByteBuffer value) {
         if (stop.get()) {
             throw new IllegalStateException("Database closed");
         }
@@ -93,7 +93,7 @@ public class MemoryTablePool implements Table, Closeable {
     }
 
     @Override
-    public void remove(@NotNull ByteBuffer key) {
+    public void remove(@NotNull final ByteBuffer key) {
         if (stop.get()) {
             throw new IllegalStateException("Database closed");
         }

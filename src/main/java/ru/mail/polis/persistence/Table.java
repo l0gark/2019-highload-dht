@@ -8,7 +8,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.Iterator;
 import java.util.List;
 
@@ -41,7 +40,7 @@ public interface Table {
      * @param to    directory
      * @throws IOException If an I/O error occurs
      */
-    public static void write(@NotNull final Iterator<Cell> cells, @NotNull final File to)
+    static void write(@NotNull final Iterator<Cell> cells, @NotNull final File to)
             throws IOException {
         try (FileChannel fileChannel = FileChannel.open(
                 to.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {

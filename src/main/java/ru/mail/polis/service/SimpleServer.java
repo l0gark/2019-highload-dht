@@ -38,7 +38,7 @@ public class SimpleServer extends HttpServer implements Service {
      * @param executor pool
      * @throws IOException io
      */
-    public SimpleServer(final int port, @NotNull final DAO dao, Executor executor) throws IOException {
+    public SimpleServer(final int port, @NotNull final DAO dao, final Executor executor) throws IOException {
         super(getConfig(port));
         this.dao = dao;
         this.executor = executor;
@@ -65,12 +65,12 @@ public class SimpleServer extends HttpServer implements Service {
     @Path("/v0/entity")
     public void daoMethods(@NotNull final Request request,
                            @Param("id") final String id,
-                           HttpSession session) {
+                           final HttpSession session) {
         if (id == null || id.isEmpty()) {
             sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
         }
-        ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
+        final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
         try {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
@@ -134,9 +134,9 @@ public class SimpleServer extends HttpServer implements Service {
         if (port <= 1024 || port >= 65536) {
             throw new IllegalArgumentException("Invalid port");
         }
-        AcceptorConfig acceptorConfig = new AcceptorConfig();
+        final AcceptorConfig acceptorConfig = new AcceptorConfig();
         acceptorConfig.port = port;
-        HttpServerConfig config = new HttpServerConfig();
+        final HttpServerConfig config = new HttpServerConfig();
         config.acceptors = new AcceptorConfig[]{acceptorConfig};
         config.selectors = 4;
         return config;
@@ -157,7 +157,7 @@ public class SimpleServer extends HttpServer implements Service {
     private Response getMethod(final ByteBuffer key) throws IOException {
         final ByteBuffer value = dao.get(key);
         final ByteBuffer duplicate = value.duplicate();
-        byte[] body = new byte[duplicate.remaining()];
+        final byte[] body = new byte[duplicate.remaining()];
         duplicate.get(body);
         return new Response(Response.OK, body);
     }
