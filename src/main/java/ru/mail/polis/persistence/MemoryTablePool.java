@@ -7,7 +7,10 @@ import ru.mail.polis.dao.Iters;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NavigableMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -32,13 +35,19 @@ public class MemoryTablePool implements Table, Closeable {
 
     private AtomicBoolean stop = new AtomicBoolean(false);
 
+    /**
+     * Pool of MemTable.
+     *
+     * @param memFlushThreshHold when flush to disk
+     * @param startGeneration begin generation
+     * @param queueCapacity capacity of queue
+     */
     public MemoryTablePool(final long memFlushThreshHold, final int startGeneration, final int queueCapacity) {
         this.memFlushThreshHold = memFlushThreshHold;
         this.generation = startGeneration;
         this.pendingFlush = new ConcurrentSkipListMap<>();
         this.current = new MemTable();
         this.flushQueue = new ArrayBlockingQueue<>(queueCapacity);
-
     }
 
     @Override
@@ -96,6 +105,11 @@ public class MemoryTablePool implements Table, Closeable {
         return flushQueue.take();
     }
 
+    /**
+     * Mark generation that was flush.
+     *
+     * @param generation that generation
+     */
     public void flushed(final int generation) {
         lock.writeLock().lock();
         try {
@@ -107,7 +121,6 @@ public class MemoryTablePool implements Table, Closeable {
         if (generation > lastFlushedGeneration.get()) {
             lastFlushedGeneration.set(generation);
         }
-
     }
 
     public AtomicInteger getLastFlushedGeneration() {

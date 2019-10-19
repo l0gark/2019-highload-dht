@@ -16,6 +16,11 @@ public final class Bytes {
         return result.putLong(value).rewind();
     }
 
+    /**
+     * Convert to ByteBuffer byte array.
+     * @param byteBuffer buffer
+     * @return array of bytes in bytebuffer
+     */
     public static byte[] toArray(final ByteBuffer byteBuffer){
         final ByteBuffer duplicate = byteBuffer.duplicate();
         final byte[] array = new byte[duplicate.remaining()];

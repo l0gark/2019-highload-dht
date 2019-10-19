@@ -24,7 +24,7 @@ public class StorageSession extends HttpSession {
 
     private Iterator<Record> records;
 
-    StorageSession(@NotNull Socket socket, @NotNull HttpServer server) {
+    StorageSession(@NotNull final Socket socket, @NotNull final HttpServer server) {
         super(socket, server);
     }
 

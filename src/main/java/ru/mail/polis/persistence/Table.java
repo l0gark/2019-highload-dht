@@ -41,55 +41,48 @@ public interface Table {
      * @param to    directory
      * @throws IOException If an I/O error occurs
      */
-    static void write(final Iterator<Cell> cells, final File to) throws IOException {
-        try (FileChannel fc = FileChannel.open(to.toPath(),
-                StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE)) {
+    public static void write(@NotNull final Iterator<Cell> cells, @NotNull final File to)
+            throws IOException {
+        try (FileChannel fileChannel = FileChannel.open(
+                to.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             final List<Long> offsets = new ArrayList<>();
             long offset = 0;
             while (cells.hasNext()) {
                 offsets.add(offset);
 
                 final Cell cell = cells.next();
+
                 final ByteBuffer key = cell.getKey();
                 final int keySize = cell.getKey().remaining();
+                fileChannel.write(Bytes.fromInt(keySize));
+                offset += Integer.BYTES;
+                final ByteBuffer keyDuplicate = key.duplicate();
+                fileChannel.write(keyDuplicate);
+                offset += keySize;
 
                 final Value value = cell.getValue();
 
-                final int bufferSize = Integer.BYTES
-                        + key.remaining()
-                        + Long.BYTES
-                        + (value.isRemoved() ? 0 : Integer.BYTES + value.getData().remaining());
-
-                final ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-                buffer.putInt(keySize).put(key);
-
-                // Timestamp
                 if (value.isRemoved()) {
-                    buffer.putLong(-cell.getValue().getTimeStamp());
+                    fileChannel.write(Bytes.fromLong(-cell.getValue().getTimeStamp()));
                 } else {
-                    buffer.putLong(cell.getValue().getTimeStamp());
+                    fileChannel.write(Bytes.fromLong(cell.getValue().getTimeStamp()));
                 }
 
-                // Value
+                offset += Long.BYTES;
                 if (!value.isRemoved()) {
                     final ByteBuffer valueData = value.getData();
-                    final int valueSize = valueData.remaining();
-                    buffer.putInt(valueSize).put(valueData);
+                    final int valueSize = value.getData().remaining();
+                    fileChannel.write(Bytes.fromInt(valueSize));
+                    offset += Integer.BYTES;
+                    fileChannel.write(valueData);
+                    offset += valueSize;
                 }
-
-                buffer.flip();
-                fc.write(buffer);
-                offset += bufferSize;
+            }
+            for (final Long anOffset : offsets) {
+                fileChannel.write(Bytes.fromLong(anOffset));
             }
 
-            // Offsets
-            for (final long anOffset : offsets) {
-                fc.write(Bytes.fromLong(anOffset));
-            }
-
-            // Rows
-            fc.write(Bytes.fromLong(offsets.size()));
+            fileChannel.write(Bytes.fromLong(offsets.size()));
         }
     }
 }

@@ -5,7 +5,8 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.concurrent.ThreadSafe;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Iterator;
+import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -53,5 +54,4 @@ public class MemTable implements Table {
             sizeInBytes.addAndGet(-previous.getData().remaining());
         }
     }
-
 }

@@ -1,10 +1,6 @@
 package ru.mail.polis.persistence;
 
-import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.mail.polis.dao.Iters;
 
 import java.io.File;
 import java.io.IOException;
@@ -25,8 +21,6 @@ public class FileTable implements Table {
     private final LongBuffer offsets;
     private final ByteBuffer cells;
     private final File file;
-
-    private static final Logger log = LoggerFactory.getLogger(FileTable.class);
 
     /**
      * Creates instance of FileTable and get data from file.
@@ -55,58 +49,6 @@ public class FileTable implements Table {
         final ByteBuffer cellBuffer = mapped.duplicate();
         cellBuffer.limit(offsetBuffer.position());
         this.cells = cellBuffer.slice();
-    }
-
-    /**
-     * Write data to disk.
-     *
-     * @param cells data iterator to write
-     * @param to    ile location
-     * @throws IOException if was input or output errors
-     */
-    public static void writeToFile(@NotNull final Iterator<Cell> cells, @NotNull final File to)
-            throws IOException {
-        try (FileChannel fileChannel = FileChannel.open(
-                to.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            final List<Long> offsets = new ArrayList<>();
-            long offset = 0;
-            while (cells.hasNext()) {
-                offsets.add(offset);
-
-                final Cell cell = cells.next();
-
-                final ByteBuffer key = cell.getKey();
-                final int keySize = cell.getKey().remaining();
-                fileChannel.write(Bytes.fromInt(keySize));
-                offset += Integer.BYTES;
-                final ByteBuffer keyDuplicate = key.duplicate();
-                fileChannel.write(keyDuplicate);
-                offset += keySize;
-
-                final Value value = cell.getValue();
-
-                if (value.isRemoved()) {
-                    fileChannel.write(Bytes.fromLong(-cell.getValue().getTimeStamp()));
-                } else {
-                    fileChannel.write(Bytes.fromLong(cell.getValue().getTimeStamp()));
-                }
-
-                offset += Long.BYTES;
-                if (!value.isRemoved()) {
-                    final ByteBuffer valueData = value.getData();
-                    final int valueSize = value.getData().remaining();
-                    fileChannel.write(Bytes.fromInt(valueSize));
-                    offset += Integer.BYTES;
-                    fileChannel.write(valueData);
-                    offset += valueSize;
-                }
-            }
-            for (final Long anOffset : offsets) {
-                fileChannel.write(Bytes.fromLong(anOffset));
-            }
-
-            fileChannel.write(Bytes.fromLong(offsets.size()));
-        }
     }
 
     @Override
@@ -221,40 +163,7 @@ public class FileTable implements Table {
         return -1;
     }
 
-    public int getGeneration() {
-        return getGenerationByName(file.getName());
-    }
-
     public File getFile() {
         return file;
-    }
-
-    static int getGenerationByName(final String name) {
-        for (int index = 0; index < Math.min(9, name.length()); index++) {
-            if (!Character.isDigit(name.charAt(index))) {
-                return index == 0 ? 0 : Integer.parseInt(name.substring(0, index));
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * Merge list of SSTables.
-     *
-     * @param tables list of SSTables
-     * @return MergedIterator with latest versions of key-value
-     */
-    public static Iterator<Cell> merge(@NotNull final List<Table> tables) {
-        final List<Iterator<Cell>> list = new ArrayList<>(tables.size());
-        for (final Table table : tables) {
-            try {
-                list.add(table.iterator(ByteBuffer.allocate(0)));
-            } catch (IOException e) {
-                log.error("IOException in merge SSTables iterators : ", e);
-            }
-        }
-
-        //noinspection UnstableApiUsage
-        return Iters.collapseEquals(Iterators.mergeSorted(list, Cell.COMPARATOR), Cell::getKey);
     }
 }

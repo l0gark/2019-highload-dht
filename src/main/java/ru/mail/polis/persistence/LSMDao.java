@@ -1,15 +1,12 @@
 package ru.mail.polis.persistence;
 
 import com.google.common.collect.Iterators;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.Iters;
-import ru.mail.polis.service.StorageSession;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,14 +34,7 @@ public class LSMDao implements DAO {
 
     private static final int TABLES_LIMIT = 10;
 
-//    private ExecutorService executor;
-
-    private Thread flusherThread;
-
-//    private int gen = 0;
-
-    private AtomicInteger generationToCompact = new AtomicInteger(0);
-
+    private final Thread flusherThread;
 
     /**
      * Create persistence DAO.
@@ -54,12 +44,11 @@ public class LSMDao implements DAO {
      *
      * @throws IOException if I/O error
      */
-
     public LSMDao(@NotNull final File file, final long flushLimit, final int queueCapacity) throws IOException {
         assert flushLimit >= 0L;
         this.file = file;
         this.fileTables = new ConcurrentSkipListMap<>();
-        AtomicInteger generation = new AtomicInteger(0);
+        final AtomicInteger generation = new AtomicInteger(0);
         try (Stream<Path> walk = Files.walk(file.toPath(), 1)) {
             walk.filter(path -> {
                 final String filename = path.getFileName().toString();
@@ -67,11 +56,11 @@ public class LSMDao implements DAO {
             })
                     .forEach(path -> {
                         try {
-                            int currGen = FileTable.fromPath(path);
-                            if (currGen >= generation.get()) {
-                                generation.set(currGen);
+                            final int currentGeneration = FileTable.fromPath(path);
+                            if (currentGeneration >= generation.get()) {
+                                generation.set(currentGeneration);
                             }
-                            fileTables.put(currGen, new FileTable(path.toFile()));
+                            fileTables.put(currentGeneration, new FileTable(path.toFile()));
                         } catch (IOException e) {
                             log.error("Something go wrong in reading SSTables, ", e);
                         }
@@ -135,7 +124,7 @@ public class LSMDao implements DAO {
     }
 
     private void flush(final FlushTable tableToFlush) throws IOException {
-        Iterator<Cell> memIterator = tableToFlush.getTable().iterator(ByteBuffer.allocate(0));
+        final Iterator<Cell> memIterator = tableToFlush.getTable().iterator(ByteBuffer.allocate(0));
 
         if (memIterator.hasNext()) {
             final int generation = tableToFlush.getGeneration();
@@ -143,17 +132,14 @@ public class LSMDao implements DAO {
             final String filename = PREFIX_FILE + generation + SUFFIX_DAT;
 
             final File tmp = new File(file, tempFilename);
-            FileTable.writeToFile(memIterator, tmp);
+            Table.write(memIterator, tmp);
             final File dest = new File(file, filename);
             Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE);
             fileTables.put(generation, new FileTable(dest));
             memTablePool.flushed(generation);
-
-            System.out.println("Flushing generation " + tableToFlush.getGeneration());
         }
 
         if (fileTables.size() > TABLES_LIMIT) {
-            generationToCompact.set(tableToFlush.getGeneration());
             compact();
         }
     }
@@ -170,7 +156,7 @@ public class LSMDao implements DAO {
         final Iterator<Cell> cellIterator = fileTablesIterator(ByteBuffer.allocate(0));
 
         final File tmp = new File(file, tempFilename);
-        FileTable.writeToFile(cellIterator, tmp);
+        Table.write(cellIterator, tmp);
         final File dest = new File(file, filename);
         Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE);
 
@@ -185,7 +171,6 @@ public class LSMDao implements DAO {
         memTablePool.flushed(generation);
     }
 
-
     @Override
     public void close() {
         memTablePool.close();
@@ -196,7 +181,6 @@ public class LSMDao implements DAO {
         }
         flusherThread.interrupt();
     }
-
 
     private class FlusherThread extends Thread {
 

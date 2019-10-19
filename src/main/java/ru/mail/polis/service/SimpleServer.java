@@ -1,7 +1,13 @@
 package ru.mail.polis.service;
 
 import com.google.common.base.Charsets;
-import one.nio.http.*;
+import one.nio.http.HttpServer;
+import one.nio.http.Path;
+import one.nio.http.Request;
+import one.nio.http.Response;
+import one.nio.http.Param;
+import one.nio.http.HttpServerConfig;
+import one.nio.http.HttpSession;
 import one.nio.net.Socket;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
@@ -24,7 +30,14 @@ public class SimpleServer extends HttpServer implements Service {
     private final DAO dao;
     private final Executor executor;
 
-
+    /**
+     * Simple implementation of Service.
+     *
+     * @param port     to listen
+     * @param dao      implementation
+     * @param executor pool
+     * @throws IOException io
+     */
     public SimpleServer(final int port, @NotNull final DAO dao, Executor executor) throws IOException {
         super(getConfig(port));
         this.dao = dao;
@@ -32,11 +45,23 @@ public class SimpleServer extends HttpServer implements Service {
         log.info("Server is running on port " + port);
     }
 
+    /**
+     * Method for get status.
+     *
+     * @return state
+     */
     @Path("/v0/status")
     public Response status() {
         return new Response(Response.OK, Response.EMPTY);
     }
 
+    /**
+     * Http interface for dao.
+     *
+     * @param request http request
+     * @param id      key
+     * @param session session
+     */
     @Path("/v0/entity")
     public void daoMethods(@NotNull final Request request,
                            @Param("id") final String id,
@@ -67,8 +92,16 @@ public class SimpleServer extends HttpServer implements Service {
         }
     }
 
+    /**
+     * Range method.
+     *
+     * @param request http request
+     * @param session session
+     * @param start   of range
+     * @param end     of range
+     */
     @Path("/v0/entities")
-    public void entities(Request request, HttpSession session, @Param("start") String start,
+    public void entities(final Request request, final HttpSession session, @Param("start") final String start,
                          @Param("end") String end) {
         if (start == null || start.isEmpty()) {
             sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
@@ -87,14 +120,13 @@ public class SimpleServer extends HttpServer implements Service {
         }
     }
 
-
     @Override
-    public void handleDefault(Request request, HttpSession session) throws IOException {
+    public void handleDefault(final Request request, final HttpSession session) throws IOException {
         session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
     }
 
     @Override
-    public HttpSession createSession(Socket socket) {
+    public HttpSession createSession(final Socket socket) {
         return new StorageSession(socket, this);
     }
 
@@ -122,15 +154,15 @@ public class SimpleServer extends HttpServer implements Service {
         });
     }
 
-    private Response getMethod(ByteBuffer key) throws IOException {
-        ByteBuffer value = dao.get(key);
-        ByteBuffer duplicate = value.duplicate();
+    private Response getMethod(final ByteBuffer key) throws IOException {
+        final ByteBuffer value = dao.get(key);
+        final ByteBuffer duplicate = value.duplicate();
         byte[] body = new byte[duplicate.remaining()];
         duplicate.get(body);
         return new Response(Response.OK, body);
     }
 
-    private Response putMethod(ByteBuffer key, Request request) throws IOException {
+    private Response putMethod(final ByteBuffer key, final Request request) throws IOException {
         dao.upsert(key, ByteBuffer.wrap(request.getBody()));
         return new Response(Response.CREATED, Response.EMPTY);
     }
