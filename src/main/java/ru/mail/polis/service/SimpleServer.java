@@ -71,24 +71,21 @@ public class SimpleServer extends HttpServer implements Service {
             return;
         }
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
-        try {
-            switch (request.getMethod()) {
-                case Request.METHOD_GET:
-                    executeAsync(session, () -> getMethod(key));
-                    break;
-                case Request.METHOD_PUT:
-                    executeAsync(session, () -> putMethod(key, request));
-                    break;
-                case Request.METHOD_DELETE:
+        switch (request.getMethod()) {
+            case Request.METHOD_GET:
+                executeAsync(session, () -> getMethod(key));
+                break;
+            case Request.METHOD_PUT:
+                executeAsync(session, () -> putMethod(key, request));
+                break;
+            case Request.METHOD_DELETE:
+                executeAsync(session, () -> {
                     dao.remove(key);
-                    executeAsync(session, () -> new Response(Response.ACCEPTED, Response.EMPTY));
-                    break;
-                default:
-                    executeAsync(session, () -> new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY));
-                    break;
-            }
-        } catch (IOException e) {
-            sendResponse(session, new Response(Response.INTERNAL_ERROR, Response.EMPTY));
+                    return new Response(Response.ACCEPTED, Response.EMPTY);
+                });
+                break;
+            default:
+                sendResponse(session, new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY));
         }
     }
 
