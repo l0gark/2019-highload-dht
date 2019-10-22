@@ -151,4 +151,5 @@
             <property name="exceptionVariableName" value="expected"/>
         </module>
     </module>
+    <module name="NewlineAtEndOfFile"/>
 </module>
