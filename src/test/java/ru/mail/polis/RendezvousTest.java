@@ -81,7 +81,6 @@ public class RendezvousTest extends TestBase {
             final double MAX_ERROR = 0.15;
 
             for (final double error : errors) {
-                System.out.println(error);
                 assertTrue(error < MAX_ERROR);
             }
         }
