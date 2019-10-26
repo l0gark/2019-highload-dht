@@ -1,14 +1,10 @@
 package ru.mail.polis.service;
 
 import com.google.common.base.Charsets;
-import one.nio.http.HttpServer;
-import one.nio.http.Path;
-import one.nio.http.Request;
-import one.nio.http.Response;
-import one.nio.http.Param;
-import one.nio.http.HttpServerConfig;
-import one.nio.http.HttpSession;
+import one.nio.http.*;
+import one.nio.net.ConnectionString;
 import one.nio.net.Socket;
+import one.nio.pool.PoolException;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -18,8 +14,12 @@ import ru.mail.polis.dao.DAO;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
 import java.util.NoSuchElementException;
+
 import java.util.concurrent.Executor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -30,6 +30,9 @@ public class SimpleServer extends HttpServer implements Service {
     private final DAO dao;
     private final Executor executor;
 
+    private final Topology<String> topology;
+    private final Map<String, HttpClient> pool;
+
     /**
      * Simple implementation of Service.
      *
@@ -38,10 +41,23 @@ public class SimpleServer extends HttpServer implements Service {
      * @param executor pool
      * @throws IOException io
      */
-    public SimpleServer(final int port, @NotNull final DAO dao, final Executor executor) throws IOException {
+    public SimpleServer(final int port,
+                        @NotNull final DAO dao,
+                        @NotNull final Executor executor,
+                        @NotNull final Topology<String> topology) throws IOException {
         super(getConfig(port));
         this.dao = dao;
         this.executor = executor;
+        this.topology = topology;
+
+        final Set<String> nodes = topology.all();
+        pool = new HashMap<>(nodes.size() << 1);
+        for (final String name : nodes) {
+            if (!this.topology.isMe(name)) {
+                pool.put(name, new HttpClient(new ConnectionString(name + "?timeout=100")));
+            }
+        }
+
         log.info("Server is running on port " + port);
     }
 
@@ -71,6 +87,14 @@ public class SimpleServer extends HttpServer implements Service {
             return;
         }
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
+
+        final String workerNode = topology.primaryFor(key);
+
+        if (!topology.isMe(workerNode)) {
+            executeAsync(session, () -> proxy(workerNode, request));
+            return;
+        }
+
         switch (request.getMethod()) {
             case Request.METHOD_GET:
                 executeAsync(session, () -> getMethod(key));
@@ -171,6 +195,15 @@ public class SimpleServer extends HttpServer implements Service {
             } catch (IOException ex) {
                 log.error("Error while send error");
             }
+        }
+    }
+
+    private Response proxy(String workerNode, Request request) {
+        try {
+            return pool.get(workerNode).invoke(request);
+        } catch (InterruptedException | PoolException | HttpException | IOException e) {
+            log.error("Request proxy error ", e);
+            return new Response(Response.BAD_REQUEST, Response.EMPTY);
         }
     }
 

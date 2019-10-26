@@ -61,8 +61,7 @@ public final class Cluster {
             final Service storage =
                     ServiceFactory.create(
                             port,
-                            dao,
-                            topology);
+                            dao, topology);
             storage.start();
             Runtime.getRuntime().addShutdownHook(
                     new Thread(() -> {
