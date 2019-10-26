@@ -1,7 +1,15 @@
 package ru.mail.polis.service;
 
 import com.google.common.base.Charsets;
-import one.nio.http.*;
+import one.nio.http.HttpClient;
+import one.nio.http.HttpException;
+import one.nio.http.HttpServer;
+import one.nio.http.HttpServerConfig;
+import one.nio.http.HttpSession;
+import one.nio.http.Param;
+import one.nio.http.Path;
+import one.nio.http.Request;
+import one.nio.http.Response;
 import one.nio.net.ConnectionString;
 import one.nio.net.Socket;
 import one.nio.pool.PoolException;
@@ -198,7 +206,7 @@ public class SimpleServer extends HttpServer implements Service {
         }
     }
 
-    private Response proxy(String workerNode, Request request) {
+    private Response proxy(@NotNull final String workerNode, @NotNull final Request request) {
         try {
             return pool.get(workerNode).invoke(request);
         } catch (InterruptedException | PoolException | HttpException | IOException e) {

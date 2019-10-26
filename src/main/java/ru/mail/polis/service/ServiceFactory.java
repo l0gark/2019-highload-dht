@@ -17,14 +17,11 @@
 package ru.mail.polis.service;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import java.io.IOException;
-import java.util.Set;
-
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
 
 import java.io.IOException;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 

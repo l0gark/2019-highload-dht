@@ -1,16 +1,12 @@
 package ru.mail.polis.service;
 
-import com.google.common.hash.Funnel;
-import com.google.common.hash.Funnels;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.persistence.Bytes;
 
-import javax.security.auth.kerberos.KerberosKey;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.security.Key;
 import java.util.Arrays;
 import java.util.Set;
 
@@ -24,8 +20,13 @@ public class Node implements Topology<String> {
     @NotNull
     private final String name;
 
+    /**
+     * Simple topology implementation.
+     * @param set all names of nodes
+     * @param name of current node
+     */
     public Node(@NotNull final Set<String> set, @NotNull final String name) {
-        assert set.size() > 0;
+        assert !set.isEmpty();
         this.name = name;
 
         nodes = new String[set.size()];
