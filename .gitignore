@@ -15,6 +15,7 @@
 !.codeclimate.yml
 !src/res
 !*.svg
+!*.txt
 
 # ...even if they are in subdirectories
 !*/
