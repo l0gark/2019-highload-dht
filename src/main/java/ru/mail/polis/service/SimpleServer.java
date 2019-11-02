@@ -213,7 +213,8 @@ public class SimpleServer extends HttpServer implements Service {
         for (final String node : nodes) {
             if (topology.isMe(node) && ResponseUtils.is2XX(LocalClient.deleteMethod(dao, key).getStatus())) {
                 count++;
-            } else if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
+            }
+            if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
                 count++;
             }
         }
