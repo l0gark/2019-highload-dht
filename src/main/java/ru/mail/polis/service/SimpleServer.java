@@ -72,7 +72,6 @@ public class SimpleServer extends HttpServer implements Service {
         }
 
         this.quorum = ReplicationFactor.quorum(nodes.size());
-        log.info("Server is running on port " + port);
     }
 
     /**
@@ -204,7 +203,6 @@ public class SimpleServer extends HttpServer implements Service {
         if (count < replicationFactor.getAck()) {
             return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
         }
-
         return new Response(Response.CREATED, Response.EMPTY);
     }
 
