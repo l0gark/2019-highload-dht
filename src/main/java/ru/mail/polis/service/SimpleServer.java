@@ -72,7 +72,6 @@ public class SimpleServer extends HttpServer implements Service {
         }
 
         this.quorum = ReplicationFactor.quorum(nodes.size());
-
         log.info("Server is running on port " + port);
     }
 
@@ -185,6 +184,7 @@ public class SimpleServer extends HttpServer implements Service {
         final Value value = Value.merge(values);
         return ResponseUtils.valueToResponse(value);
     }
+
 
     private Response schedulePutEntity(@NotNull final Request request,
                                        @NotNull final ByteBuffer key,
