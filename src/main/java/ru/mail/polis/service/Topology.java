@@ -9,7 +9,11 @@ public interface Topology<T> {
 
     boolean isMe(T topology);
 
-    T primaryFor(ByteBuffer key);
+    T me();
+
+    Set<T> primaryFor(ByteBuffer key, ReplicationFactor replicationFactor);
 
     Set<T> all();
+
+
 }

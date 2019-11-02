@@ -3,16 +3,21 @@ package ru.mail.polis.persistence;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
+import java.util.Collection;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class Value implements Comparable<Value> {
+    private static final Value ABSENT = new Value(State.ABSENT, 0, null);
+
     private final long ts;
     private final ByteBuffer data;
+    private final State state;
     private static final AtomicInteger nano = new AtomicInteger();
     private static final int FACTOR = 1_000_000;
 
-    private Value(final long ts, final ByteBuffer data) {
+    public Value(State state, final long ts, final ByteBuffer data) {
         assert ts >= 0;
+        this.state = state;
         this.ts = ts;
         this.data = data;
     }
@@ -24,26 +29,31 @@ public final class Value implements Comparable<Value> {
      * @return and go back
      */
     public static Value of(final ByteBuffer data) {
-        return new Value(getMoment(), data.duplicate());
+        return new Value(State.PRESENT, getMoment(), data.duplicate());
     }
 
     public static Value of(final long time, final ByteBuffer data) {
-        return new Value(time, data.duplicate());
+        return new Value(State.PRESENT, time, data.duplicate());
     }
 
-    static Value tombstone() {
+    @NotNull
+    public static Value absent() {
+        return ABSENT;
+    }
+
+    public static Value tombstone() {
         return tombstone(getMoment());
     }
 
-    static Value tombstone(final long time) {
-        return new Value(time, null);
+    public static Value tombstone(final long time) {
+        return new Value(State.REMOVED, time, null);
     }
 
-    boolean isRemoved() {
+    public boolean isRemoved() {
         return data == null;
     }
 
-    ByteBuffer getData() {
+    public ByteBuffer getData() {
         if (data == null) {
             throw new IllegalArgumentException("");
         }
@@ -55,7 +65,7 @@ public final class Value implements Comparable<Value> {
         return Long.compare(value.ts, ts);
     }
 
-    long getTimeStamp() {
+    public long getTimeStamp() {
         return ts;
     }
 
@@ -65,5 +75,28 @@ public final class Value implements Comparable<Value> {
             nano.set(0);
         }
         return time;
+    }
+
+    public State state() {
+        return state;
+    }
+
+    @Override
+    public String toString() {
+        return state.toString() + ", ts=" + ts;
+    }
+
+    @NotNull
+    public static Value merge(@NotNull final Collection<Value> values) {
+        return values.stream()
+                .filter(v -> v.state() != Value.State.ABSENT)
+                .min(Value::compareTo)
+                .orElseGet(Value::absent);
+    }
+
+    public enum State {
+        PRESENT,
+        REMOVED,
+        ABSENT
     }
 }

@@ -2,6 +2,7 @@ package ru.mail.polis;
 
 import org.junit.jupiter.api.Test;
 import ru.mail.polis.service.Node;
+import ru.mail.polis.service.ReplicationFactor;
 import ru.mail.polis.service.Topology;
 
 import java.awt.*;
@@ -49,7 +50,7 @@ public class RendezvousTest extends TestBase {
 
             for (int i = 0; i < countKeys; i++) {
                 final ByteBuffer key = randomKeyBuffer();
-                final String node = topology.primaryFor(key);
+                final String node = topology.primaryFor(key, ReplicationFactor.quorum(countNode)).iterator().next();
                 assertTrue(map.containsKey(node));
                 map.put(node, map.get(node) + 1);
             }

@@ -20,6 +20,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ru.mail.polis.Record;
 import ru.mail.polis.NoSuchElemLite;
+import ru.mail.polis.persistence.Value;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -84,6 +85,9 @@ public interface DAO extends Closeable {
             throw new NoSuchElemLite("Not found 2");
         }
     }
+
+    @Nullable
+    Value getValue(final ByteBuffer key) throws IOException;
 
     /**
      * Inserts or updates value by given key.

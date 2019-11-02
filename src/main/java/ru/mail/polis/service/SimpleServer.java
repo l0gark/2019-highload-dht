@@ -17,22 +17,22 @@ import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.mail.polis.NoSuchElemLite;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.persistence.Bytes;
+import ru.mail.polis.persistence.Value;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.NoSuchElementException;
+import java.util.*;
 
-import java.util.concurrent.Executor;
+import java.util.concurrent.*;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class SimpleServer extends HttpServer implements Service {
+    static final String HEADER_PROXY = "X-OK-Proxy: True";
 
     private static final Logger log = LoggerFactory.getLogger(SimpleServer.class);
     private final DAO dao;
@@ -40,6 +40,8 @@ public class SimpleServer extends HttpServer implements Service {
 
     private final Topology<String> topology;
     private final Map<String, HttpClient> pool;
+
+    private final ReplicationFactor quorum;
 
     /**
      * Simple implementation of Service.
@@ -59,12 +61,14 @@ public class SimpleServer extends HttpServer implements Service {
         this.topology = topology;
 
         final Set<String> nodes = topology.all();
-        pool = new HashMap<>(nodes.size() << 1);
+        this.pool = new HashMap<>(nodes.size() << 1);
         for (final String name : nodes) {
             if (!this.topology.isMe(name)) {
-                pool.put(name, new HttpClient(new ConnectionString(name + "?timeout=100")));
+                this.pool.put(name, new HttpClient(new ConnectionString(name + "?timeout=100")));
             }
         }
+
+        this.quorum = ReplicationFactor.quorum(nodes.size());
 
         log.info("Server is running on port " + port);
     }
@@ -89,20 +93,25 @@ public class SimpleServer extends HttpServer implements Service {
     @Path("/v0/entity")
     public void daoMethods(@NotNull final Request request,
                            @Param("id") final String id,
+                           @Param("replicas") final String replicas,
                            final HttpSession session) {
         if (id == null || id.isEmpty()) {
             sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
         }
+
+
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
+        final boolean proxied = isProxied(request);
 
-        final String workerNode = topology.primaryFor(key);
-
-        if (!topology.isMe(workerNode)) {
-            executeAsync(session, () -> proxy(workerNode, request));
+        if (proxied) {
+            getLocal(request, session, key);
             return;
         }
+        getFromSet(request, session, replicas, key);
+    }
 
+    private void getLocal(Request request, HttpSession session, ByteBuffer key) {
         switch (request.getMethod()) {
             case Request.METHOD_GET:
                 executeAsync(session, () -> getMethod(key));
@@ -120,6 +129,98 @@ public class SimpleServer extends HttpServer implements Service {
                 sendResponse(session, new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY));
         }
     }
+
+    private Value responseToValue(Response response) {
+        final var ts = response.getHeader("TIME_STAMP: ");
+        if (response.getStatus() == 200) {
+            if (ts == null) {
+                throw new IllegalArgumentException();
+            }
+            return Value.of(Long.parseLong(ts), ByteBuffer.wrap(response.getBody()));
+        } else {
+            if (ts == null) {
+                return Value.absent();
+            }
+            return Value.tombstone(Long.parseLong(ts));
+        }
+    }
+
+    private void getFromSet(Request request, HttpSession session, String replicas, ByteBuffer key) {
+        ReplicationFactor replicationFactor;
+        try {
+            replicationFactor = replicas == null ? quorum : ReplicationFactor.fromString(replicas);
+        } catch (IllegalArgumentException e) {
+            sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+            return;
+        }
+        final Set<String> nodes = topology.primaryFor(key, replicationFactor);
+
+        executeAsync(session, () -> {
+            switch (request.getMethod()) {
+                case Request.METHOD_GET:
+                    List<Value> values = new ArrayList<>(nodes.size());
+                    for (final String node : nodes) {
+                        Response response;
+                        if (topology.isMe(node)) {
+                            response = getMethod(key);
+                        } else {
+                            response = proxy(node, request);
+                        }
+                        if(response.getStatus() != 400){
+                            values.add(responseToValue(response));
+                        }
+                    }
+
+                    if (values.size() < replicationFactor.getAck()) {
+                        return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+                    }
+                    Value value = Value.merge(values);
+                    return valueToResponse(value);
+                case Request.METHOD_PUT:
+                    int count = 0;
+                    for (final String node : nodes) {
+                        if (topology.isMe(node)) {
+                            if (is2XX(putMethod(key, request).getStatus())) {
+                                count++;
+                            }
+                        }
+                        if (is2XX(proxy(node, request).getStatus())) {
+                            count++;
+                        }
+                    }
+
+                    if (count < replicationFactor.getAck()) {
+                        return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+                    }
+
+                    return new Response(Response.CREATED, Response.EMPTY);
+                case Request.METHOD_DELETE:
+                    count = 0;
+                    for (final String node : nodes) {
+                        if (topology.isMe(node)) {
+                            if (is2XX(deleteMethod(key).getStatus())) {
+                                count++;
+                            }
+                        }
+                        if (is2XX(proxy(node, request).getStatus())) {
+                            count++;
+                        }
+                    }
+
+                    if (count < replicationFactor.getAck()) {
+                        return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+                    }
+                    return new Response(Response.ACCEPTED, Response.EMPTY);
+
+            }
+            return new Response(Response.BAD_REQUEST, Response.EMPTY);
+        });
+    }
+
+    private boolean is2XX(final int code) {
+        return code <= 299 && code >= 200;
+    }
+
 
     /**
      * Range method.
@@ -180,17 +281,40 @@ public class SimpleServer extends HttpServer implements Service {
         });
     }
 
+    private Response valueToResponse(final Value value) {
+        if (value.state() == Value.State.PRESENT) {
+            final var response = Response.ok(Bytes.toArray(value.getData()));
+            response.addHeader("TIME_STAMP: " + value.getTimeStamp());
+            return response;
+        } else if (value.state() == Value.State.REMOVED) {
+            final var response = new Response(Response.NOT_FOUND, Response.EMPTY);
+            response.addHeader("TIME_STAMP: " + value.getTimeStamp());
+            return response;
+        }
+        return new Response(Response.NOT_FOUND, Response.EMPTY);
+    }
+
     private Response getMethod(final ByteBuffer key) throws IOException {
-        final ByteBuffer value = dao.get(key);
-        final ByteBuffer duplicate = value.duplicate();
-        final byte[] body = new byte[duplicate.remaining()];
-        duplicate.get(body);
-        return new Response(Response.OK, body);
+        final Value value;
+        try {
+            value = dao.getValue(key);
+        } catch (NoSuchElemLite e) {
+            return new Response(Response.NOT_FOUND, Response.EMPTY);
+        }
+        if (value == null) {
+            return new Response(Response.NOT_FOUND, Response.EMPTY);
+        }
+        return valueToResponse(value);
     }
 
     private Response putMethod(final ByteBuffer key, final Request request) throws IOException {
         dao.upsert(key, ByteBuffer.wrap(request.getBody()));
         return new Response(Response.CREATED, Response.EMPTY);
+    }
+
+    private Response deleteMethod(final ByteBuffer key) throws IOException {
+        dao.remove(key);
+        return new Response(Response.OK, Response.EMPTY);
     }
 
     private static void sendResponse(@NotNull final HttpSession session,
@@ -208,15 +332,21 @@ public class SimpleServer extends HttpServer implements Service {
 
     private Response proxy(@NotNull final String workerNode, @NotNull final Request request) {
         try {
+            request.addHeader(HEADER_PROXY);
             return pool.get(workerNode).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException | IOException e) {
+        } catch (InterruptedException | PoolException | HttpException | IOException | NullPointerException e) {
             log.error("Request proxy error ", e);
             return new Response(Response.BAD_REQUEST, Response.EMPTY);
         }
+    }
+
+    static boolean isProxied(@NotNull final Request request) {
+        return request.getHeader(HEADER_PROXY) != null;
     }
 
     @FunctionalInterface
     interface Action {
         Response act() throws IOException;
     }
+
 }

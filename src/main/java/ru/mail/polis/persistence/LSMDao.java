@@ -4,6 +4,7 @@ import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.mail.polis.NoSuchElemLite;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.Iters;
@@ -82,13 +83,34 @@ public class LSMDao implements DAO {
         });
     }
 
+    @Override
+    public Value getValue(final ByteBuffer from) throws IOException {
+        final List<Iterator<Cell>> iterators = new ArrayList<>();
+        iterators.add(fileTablesIterator(from));
+        iterators.add(memTablePool.iterator(from));
+
+        final Iterator<Cell> cellIterator = Iters.collapseEquals(
+                Iterators.mergeSorted(iterators, Cell.COMPARATOR),
+                Cell::getKey
+        );
+
+        if (!cellIterator.hasNext()) {
+            return Value.absent();
+        }
+
+        final Cell next = cellIterator.next();
+        if (next.getKey().equals(from)) {
+            return next.getValue();
+        }
+        return Value.absent();
+    }
+
     private Iterator<Cell> fileTablesIterator(@NotNull final ByteBuffer from) {
         final List<Iterator<Cell>> iterators = new ArrayList<>();
         for (final FileTable ssTable : this.fileTables.values()) {
             iterators.add(ssTable.iterator(from));
         }
 
-        //noinspection UnstableApiUsage
         return Iters.collapseEquals(
                 Iterators.mergeSorted(iterators, Cell.COMPARATOR),
                 Cell::getKey

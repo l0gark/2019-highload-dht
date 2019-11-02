@@ -8,6 +8,8 @@ import ru.mail.polis.persistence.Bytes;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.PriorityQueue;
 import java.util.Set;
 
 public class Node implements Topology<String> {
@@ -22,7 +24,8 @@ public class Node implements Topology<String> {
 
     /**
      * Simple topology implementation.
-     * @param set all names of nodes
+     *
+     * @param set  all names of nodes
      * @param name of current node
      */
     public Node(@NotNull final Set<String> set, @NotNull final String name) {
@@ -32,32 +35,43 @@ public class Node implements Topology<String> {
         nodes = new String[set.size()];
         set.toArray(nodes);
         Arrays.sort(nodes);
-        //noinspection UnstableApiUsage
+
         hasher = Hashing.sha256();
     }
 
     @Override
     public boolean isMe(@NotNull final String topology) {
-        return name.equals(topology);
+        return topology.equals(name);
     }
 
     @Override
-    public String primaryFor(final ByteBuffer key) {
-        final String strKey = Arrays.toString(Bytes.toArray(key));
-        String minNode = nodes[0];
+    public String me() {
+        return name;
+    }
 
-        for (int i = 1; i < nodes.length; i++) {
-            final String current = nodes[i];
-
-            final long minHash = myHashCode(strKey, minNode);
-            final long curHash = myHashCode(strKey, current);
-
-            if (minHash > curHash) {
-                minNode = current;
-            }
+    @Override
+    public Set<String> primaryFor(final ByteBuffer key, final ReplicationFactor replicationFactor) {
+        if (replicationFactor.getFrom() > nodes.length) {
+            throw new IllegalArgumentException();
         }
 
-        return minNode;
+        final String strKey = Arrays.toString(Bytes.toArray(key));
+
+        final PriorityQueue<String> queue = new PriorityQueue<>((node1, node2) -> {
+            final long hash1 = myHashCode(strKey, node1);
+            final long hash2 = myHashCode(strKey, node2);
+
+            return Long.compare(hash1, hash2);
+        });
+
+        queue.addAll(Arrays.asList(nodes));
+
+        final Set<String> res = new HashSet<>(replicationFactor.getFrom() << 1);
+        for (int i = 0; i < replicationFactor.getFrom(); i++) {
+            res.add(queue.poll());
+        }
+
+        return res;
     }
 
     @Override
