@@ -34,9 +34,6 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.service.LocalClient.deleteMethod;
-import static ru.mail.polis.service.LocalClient.getMethod;
-import static ru.mail.polis.service.LocalClient.putMethod;
 import static ru.mail.polis.service.LocalClient.sendResponse;
 
 public class SimpleServer extends HttpServer implements Service {
@@ -120,10 +117,10 @@ public class SimpleServer extends HttpServer implements Service {
                           @NotNull final ByteBuffer key) {
         switch (request.getMethod()) {
             case Request.METHOD_GET:
-                executeAsync(session, () -> getMethod(dao, key));
+                executeAsync(session, () -> LocalClient.getMethod(dao, key));
                 break;
             case Request.METHOD_PUT:
-                executeAsync(session, () -> putMethod(dao, key, request));
+                executeAsync(session, () -> LocalClient.putMethod(dao, key, request));
                 break;
             case Request.METHOD_DELETE:
                 executeAsync(session, () -> {
@@ -172,7 +169,7 @@ public class SimpleServer extends HttpServer implements Service {
         for (final String node : nodes) {
             Response response;
             if (topology.isMe(node)) {
-                response = getMethod(dao, key);
+                response = LocalClient.getMethod(dao, key);
             } else {
                 response = proxy(node, request);
             }
@@ -194,10 +191,9 @@ public class SimpleServer extends HttpServer implements Service {
                                        @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && ResponseUtils.is2XX(putMethod(dao, key, request).getStatus())) {
+            if (topology.isMe(node) && ResponseUtils.is2XX(LocalClient.putMethod(dao, key, request).getStatus())) {
                 count++;
-            }
-            if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
+            } else if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
                 count++;
             }
         }
@@ -215,10 +211,9 @@ public class SimpleServer extends HttpServer implements Service {
                                           @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && ResponseUtils.is2XX(deleteMethod(dao, key).getStatus())) {
+            if (topology.isMe(node) && ResponseUtils.is2XX(LocalClient.deleteMethod(dao, key).getStatus())) {
                 count++;
-            }
-            if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
+            } else if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
                 count++;
             }
         }
