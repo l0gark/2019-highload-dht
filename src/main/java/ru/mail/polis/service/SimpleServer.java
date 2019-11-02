@@ -34,7 +34,10 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static ru.mail.polis.service.LocalClient.*;
+import static ru.mail.polis.service.LocalClient.deleteMethod;
+import static ru.mail.polis.service.LocalClient.getMethod;
+import static ru.mail.polis.service.LocalClient.putMethod;
+import static ru.mail.polis.service.LocalClient.sendResponse;
 
 public class SimpleServer extends HttpServer implements Service {
     private static final Logger log = LoggerFactory.getLogger(SimpleServer.class);
