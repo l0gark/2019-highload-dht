@@ -22,7 +22,7 @@ public final class Value implements Comparable<Value> {
      * @param ts timestamp
      * @param data bytebuffer
      */
-    public Value(State state, final long ts, final ByteBuffer data) {
+    public Value(final State state, final long ts, final ByteBuffer data) {
         assert ts >= 0;
         this.state = state;
         this.ts = ts;

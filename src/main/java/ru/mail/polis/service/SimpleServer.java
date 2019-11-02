@@ -15,6 +15,7 @@ import one.nio.net.Socket;
 import one.nio.pool.PoolException;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mail.polis.NoSuchElemLite;
@@ -117,7 +118,7 @@ public class SimpleServer extends HttpServer implements Service {
         getFromSet(request, session, replicas, key);
     }
 
-    private void getLocal(Request request, HttpSession session, ByteBuffer key) {
+    private void getLocal(@NotNull final Request request, @NotNull final HttpSession session, @NotNull final ByteBuffer key) {
         switch (request.getMethod()) {
             case Request.METHOD_GET:
                 executeAsync(session, () -> getMethod(key));
@@ -153,7 +154,7 @@ public class SimpleServer extends HttpServer implements Service {
 
     private void getFromSet(@NotNull final Request request,
                             @NotNull final HttpSession session,
-                            @NotNull final String replicas,
+                            @Nullable final String replicas,
                             @NotNull final ByteBuffer key) {
         ReplicationFactor replicationFactor;
         try {
@@ -164,63 +165,86 @@ public class SimpleServer extends HttpServer implements Service {
         }
         final Set<String> nodes = topology.primaryFor(key, replicationFactor);
 
-        executeAsync(session, () -> {
-            switch (request.getMethod()) {
-                case Request.METHOD_GET:
-                    final List<Value> values = new ArrayList<>(nodes.size());
-                    for (final String node : nodes) {
-                        Response response;
-                        if (topology.isMe(node)) {
-                            response = getMethod(key);
-                        } else {
-                            response = proxy(node, request);
-                        }
-                        if (response.getStatus() != 400) {
-                            values.add(responseToValue(response));
-                        }
-                    }
-
-                    if (values.size() < replicationFactor.getAck()) {
-                        return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-                    }
-                    final Value value = Value.merge(values);
-                    return valueToResponse(value);
-                case Request.METHOD_PUT:
-                    int count = 0;
-                    for (final String node : nodes) {
-                        if (topology.isMe(node) && is2XX(putMethod(key, request).getStatus())) {
-                            count++;
-                        }
-                        if (is2XX(proxy(node, request).getStatus())) {
-                            count++;
-                        }
-                    }
-
-                    if (count < replicationFactor.getAck()) {
-                        return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-                    }
-
-                    return new Response(Response.CREATED, Response.EMPTY);
-                case Request.METHOD_DELETE:
-                    count = 0;
-                    for (final String node : nodes) {
-                        if (topology.isMe(node) && is2XX(deleteMethod(key).getStatus())) {
-                            count++;
-                        }
-                        if (is2XX(proxy(node, request).getStatus())) {
-                            count++;
-                        }
-                    }
-
-                    if (count < replicationFactor.getAck()) {
-                        return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-                    }
-                    return new Response(Response.ACCEPTED, Response.EMPTY);
-                default:
-                    return new Response(Response.BAD_REQUEST, Response.EMPTY);
-            }
-        });
+        switch (request.getMethod()) {
+            case Request.METHOD_GET:
+                executeAsync(session, () -> scheduleGetEntity(request, key, replicationFactor, nodes));
+                break;
+            case Request.METHOD_PUT:
+                executeAsync(session, () -> schedulePutEntity(request, key, replicationFactor, nodes));
+                break;
+            case Request.METHOD_DELETE:
+                executeAsync(session, () -> scheduleDeleteEntity(request, key, replicationFactor, nodes));
+                break;
+            default:
+                sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+        }
     }
+
+    private Response scheduleGetEntity(@NotNull final Request request,
+                                       @NotNull final ByteBuffer key,
+                                       @NotNull final ReplicationFactor replicationFactor,
+                                       @NotNull final Set<String> nodes) throws IOException {
+        final List<Value> values = new ArrayList<>(nodes.size());
+        for (final String node : nodes) {
+            Response response;
+            if (topology.isMe(node)) {
+                response = getMethod(key);
+            } else {
+                response = proxy(node, request);
+            }
+            if (response.getStatus() != 400) {
+                values.add(responseToValue(response));
+            }
+        }
+
+        if (values.size() < replicationFactor.getAck()) {
+            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+        }
+        final Value value = Value.merge(values);
+        return valueToResponse(value);
+    }
+
+    private Response schedulePutEntity(@NotNull final Request request,
+                                       @NotNull final ByteBuffer key,
+                                       @NotNull final ReplicationFactor replicationFactor,
+                                       @NotNull final Set<String> nodes) throws IOException {
+        int count = 0;
+        for (final String node : nodes) {
+            if (topology.isMe(node) && is2XX(putMethod(key, request).getStatus())) {
+                count++;
+            }
+            if (is2XX(proxy(node, request).getStatus())) {
+                count++;
+            }
+        }
+
+        if (count < replicationFactor.getAck()) {
+            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+        }
+
+        return new Response(Response.CREATED, Response.EMPTY);
+    }
+
+    private Response scheduleDeleteEntity(@NotNull final Request request,
+                                          @NotNull final ByteBuffer key,
+                                          @NotNull final ReplicationFactor replicationFactor,
+                                          @NotNull final Set<String> nodes) throws IOException {
+        int count = 0;
+        for (final String node : nodes) {
+            if (topology.isMe(node) && is2XX(deleteMethod(key).getStatus())) {
+                count++;
+            }
+            if (is2XX(proxy(node, request).getStatus())) {
+                count++;
+            }
+        }
+
+        if (count < replicationFactor.getAck()) {
+            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
+        }
+        return new Response(Response.ACCEPTED, Response.EMPTY);
+    }
+
 
     private boolean is2XX(final int code) {
         return code <= 299 && code >= 200;
@@ -339,7 +363,7 @@ public class SimpleServer extends HttpServer implements Service {
         try {
             request.addHeader(HEADER_PROXY);
             final HttpClient client = pool.get(workerNode);
-            if(client == null){
+            if (client == null) {
                 return new Response(Response.BAD_REQUEST, Response.EMPTY);
             }
             return client.invoke(request);
