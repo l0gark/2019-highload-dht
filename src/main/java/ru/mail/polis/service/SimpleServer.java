@@ -38,7 +38,8 @@ import java.util.concurrent.Executor;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class SimpleServer extends HttpServer implements Service {
-    static final String HEADER_PROXY = "X-OK-Proxy: True";
+    private static final String HEADER_PROXY = "X-OK-Proxy: True";
+    private static final String HEADER_TIME_STAMP = "TIME_STAMP: ";
 
     private static final Logger log = LoggerFactory.getLogger(SimpleServer.class);
     private final DAO dao;
@@ -106,7 +107,6 @@ public class SimpleServer extends HttpServer implements Service {
             return;
         }
 
-
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
         final boolean proxied = isProxied(request);
 
@@ -136,8 +136,8 @@ public class SimpleServer extends HttpServer implements Service {
         }
     }
 
-    private Value responseToValue(Response response) {
-        final var ts = response.getHeader("TIME_STAMP: ");
+    private Value responseToValue(final Response response) {
+        final String ts = response.getHeader(HEADER_TIME_STAMP);
         if (response.getStatus() == 200) {
             if (ts == null) {
                 throw new IllegalArgumentException();
@@ -289,11 +289,11 @@ public class SimpleServer extends HttpServer implements Service {
     private Response valueToResponse(final Value value) {
         if (value.state() == Value.State.PRESENT) {
             final var response = Response.ok(Bytes.toArray(value.getData()));
-            response.addHeader("TIME_STAMP: " + value.getTimeStamp());
+            response.addHeader(HEADER_TIME_STAMP + value.getTimeStamp());
             return response;
         } else if (value.state() == Value.State.REMOVED) {
             final var response = new Response(Response.NOT_FOUND, Response.EMPTY);
-            response.addHeader("TIME_STAMP: " + value.getTimeStamp());
+            response.addHeader(HEADER_TIME_STAMP + value.getTimeStamp());
             return response;
         }
         return new Response(Response.NOT_FOUND, Response.EMPTY);
@@ -338,7 +338,7 @@ public class SimpleServer extends HttpServer implements Service {
     private Response proxy(@NotNull final String workerNode, @NotNull final Request request) {
         try {
             request.addHeader(HEADER_PROXY);
-            HttpClient client = pool.get(workerNode);
+            final HttpClient client = pool.get(workerNode);
             if(client == null){
                 return new Response(Response.BAD_REQUEST, Response.EMPTY);
             }

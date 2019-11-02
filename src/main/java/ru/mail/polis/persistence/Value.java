@@ -60,6 +60,10 @@ public final class Value implements Comparable<Value> {
         return data == null;
     }
 
+    /**
+     * Get data if exist.
+     * @return data
+     */
     public ByteBuffer getData() {
         if (data == null) {
             throw new IllegalArgumentException("");
@@ -94,7 +98,8 @@ public final class Value implements Comparable<Value> {
     }
 
     /**
-     * Merge values by timestamp
+     * Merge values by timestamp.
+     *
      * @param values list of values
      * @return min value or absent
      */

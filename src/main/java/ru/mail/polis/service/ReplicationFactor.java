@@ -10,7 +10,6 @@ public class ReplicationFactor {
      *
      * @param ack necessary
      * @param from count
-     * @return replication factor
      */
     public ReplicationFactor(final int ack, final int from) {
         if (ack < 1 || ack > from) {
@@ -25,7 +24,6 @@ public class ReplicationFactor {
      * Parse fromString.
      *
      * @param replica String format
-     * @return
      * @throws IllegalArgumentException when ack < 1 || ack > from
      */
     public static ReplicationFactor fromString(final String replica) throws IllegalArgumentException {
