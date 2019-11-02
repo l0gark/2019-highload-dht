@@ -191,10 +191,13 @@ public class SimpleServer extends HttpServer implements Service {
                                        @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && ResponseUtils.is2XX(LocalClient.putMethod(dao, key, request).getStatus())) {
+            if (ResponseUtils.is2XX(proxy(node, request))) {
                 count++;
-            } else if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
-                count++;
+            } else if (topology.isMe(node)) {
+                final Response response = LocalClient.putMethod(dao, key, request);
+                if (ResponseUtils.is2XX(response)) {
+                    count++;
+                }
             }
         }
 
@@ -211,11 +214,13 @@ public class SimpleServer extends HttpServer implements Service {
                                           @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && ResponseUtils.is2XX(LocalClient.deleteMethod(dao, key).getStatus())) {
+            if (ResponseUtils.is2XX(proxy(node, request))) {
                 count++;
-            }
-            if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
-                count++;
+            } else if (topology.isMe(node)) {
+                final Response response = LocalClient.deleteMethod(dao, key);
+                if (ResponseUtils.is2XX(response)) {
+                    count++;
+                }
             }
         }
 

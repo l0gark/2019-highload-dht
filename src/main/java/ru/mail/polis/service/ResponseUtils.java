@@ -15,8 +15,8 @@ final class ResponseUtils {
     private ResponseUtils() {
     }
 
-    static boolean is2XX(final int code) {
-        return code <= 299 && code >= 200;
+    static boolean is2XX(final Response response) {
+        return response.getStatus() <= 299 && response.getStatus() >= 200;
     }
 
     static boolean isProxied(@NotNull final Request request) {
