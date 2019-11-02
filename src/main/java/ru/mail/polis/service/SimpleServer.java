@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static ru.mail.polis.service.LocalClient.*;
 
 public class SimpleServer extends HttpServer implements Service {
     private static final Logger log = LoggerFactory.getLogger(SimpleServer.class);
@@ -117,10 +118,10 @@ public class SimpleServer extends HttpServer implements Service {
                           @NotNull final ByteBuffer key) {
         switch (request.getMethod()) {
             case Request.METHOD_GET:
-                executeAsync(session, () -> getMethod(key));
+                executeAsync(session, () -> getMethod(dao, key));
                 break;
             case Request.METHOD_PUT:
-                executeAsync(session, () -> putMethod(key, request));
+                executeAsync(session, () -> putMethod(dao, key, request));
                 break;
             case Request.METHOD_DELETE:
                 executeAsync(session, () -> {
@@ -169,7 +170,7 @@ public class SimpleServer extends HttpServer implements Service {
         for (final String node : nodes) {
             Response response;
             if (topology.isMe(node)) {
-                response = getMethod(key);
+                response = getMethod(dao, key);
             } else {
                 response = proxy(node, request);
             }
@@ -185,14 +186,13 @@ public class SimpleServer extends HttpServer implements Service {
         return ResponseUtils.valueToResponse(value);
     }
 
-
     private Response schedulePutEntity(@NotNull final Request request,
                                        @NotNull final ByteBuffer key,
                                        @NotNull final ReplicationFactor replicationFactor,
                                        @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && ResponseUtils.is2XX(putMethod(key, request).getStatus())) {
+            if (topology.isMe(node) && ResponseUtils.is2XX(putMethod(dao, key, request).getStatus())) {
                 count++;
             }
             if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
@@ -213,7 +213,7 @@ public class SimpleServer extends HttpServer implements Service {
                                           @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && ResponseUtils.is2XX(deleteMethod(key).getStatus())) {
+            if (topology.isMe(node) && ResponseUtils.is2XX(deleteMethod(dao, key).getStatus())) {
                 count++;
             }
             if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
@@ -284,42 +284,6 @@ public class SimpleServer extends HttpServer implements Service {
                 log.error("Execute exception", e);
             }
         });
-    }
-
-    private Response getMethod(final ByteBuffer key) throws IOException {
-        final Value value;
-        try {
-            value = dao.getValue(key);
-        } catch (NoSuchElemLite e) {
-            return new Response(Response.NOT_FOUND, Response.EMPTY);
-        }
-        if (value == null) {
-            return new Response(Response.NOT_FOUND, Response.EMPTY);
-        }
-        return ResponseUtils.valueToResponse(value);
-    }
-
-    private Response putMethod(final ByteBuffer key, final Request request) throws IOException {
-        dao.upsert(key, ByteBuffer.wrap(request.getBody()));
-        return new Response(Response.CREATED, Response.EMPTY);
-    }
-
-    private Response deleteMethod(final ByteBuffer key) throws IOException {
-        dao.remove(key);
-        return new Response(Response.OK, Response.EMPTY);
-    }
-
-    private static void sendResponse(@NotNull final HttpSession session,
-                                     @NotNull final Response response) {
-        try {
-            session.sendResponse(response);
-        } catch (IOException e) {
-            try {
-                session.sendError(Response.INTERNAL_ERROR, "Error while send response");
-            } catch (IOException ex) {
-                log.error("Error while send error");
-            }
-        }
     }
 
     private Response proxy(@NotNull final String workerNode, @NotNull final Request request) {
