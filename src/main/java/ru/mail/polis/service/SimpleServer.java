@@ -21,12 +21,10 @@ import org.slf4j.LoggerFactory;
 import ru.mail.polis.NoSuchElemLite;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
-import ru.mail.polis.persistence.Bytes;
 import ru.mail.polis.persistence.Value;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -39,9 +37,6 @@ import java.util.concurrent.Executor;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class SimpleServer extends HttpServer implements Service {
-    private static final String HEADER_PROXY = "X-OK-Proxy: True";
-    private static final String HEADER_TIME_STAMP = "TIME_STAMP: ";
-
     private static final Logger log = LoggerFactory.getLogger(SimpleServer.class);
     private final DAO dao;
     private final Executor executor;
@@ -109,7 +104,7 @@ public class SimpleServer extends HttpServer implements Service {
         }
 
         final ByteBuffer key = ByteBuffer.wrap(id.getBytes(Charsets.UTF_8));
-        final boolean proxied = isProxied(request);
+        final boolean proxied = ResponseUtils.isProxied(request);
 
         if (proxied) {
             getLocal(request, session, key);
@@ -137,20 +132,6 @@ public class SimpleServer extends HttpServer implements Service {
         }
     }
 
-    private Value responseToValue(final Response response) {
-        final String ts = response.getHeader(HEADER_TIME_STAMP);
-        if (response.getStatus() == 200) {
-            if (ts == null) {
-                throw new IllegalArgumentException();
-            }
-            return Value.of(Long.parseLong(ts), ByteBuffer.wrap(response.getBody()));
-        } else {
-            if (ts == null) {
-                return Value.absent();
-            }
-            return Value.tombstone(Long.parseLong(ts));
-        }
-    }
 
     private void getFromSet(@NotNull final Request request,
                             @NotNull final HttpSession session,
@@ -193,7 +174,7 @@ public class SimpleServer extends HttpServer implements Service {
                 response = proxy(node, request);
             }
             if (response.getStatus() != 400) {
-                values.add(responseToValue(response));
+                values.add(ResponseUtils.responseToValue(response));
             }
         }
 
@@ -201,7 +182,7 @@ public class SimpleServer extends HttpServer implements Service {
             return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
         }
         final Value value = Value.merge(values);
-        return valueToResponse(value);
+        return ResponseUtils.valueToResponse(value);
     }
 
     private Response schedulePutEntity(@NotNull final Request request,
@@ -210,10 +191,10 @@ public class SimpleServer extends HttpServer implements Service {
                                        @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && is2XX(putMethod(key, request).getStatus())) {
+            if (topology.isMe(node) && ResponseUtils.is2XX(putMethod(key, request).getStatus())) {
                 count++;
             }
-            if (is2XX(proxy(node, request).getStatus())) {
+            if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
                 count++;
             }
         }
@@ -231,10 +212,10 @@ public class SimpleServer extends HttpServer implements Service {
                                           @NotNull final Set<String> nodes) throws IOException {
         int count = 0;
         for (final String node : nodes) {
-            if (topology.isMe(node) && is2XX(deleteMethod(key).getStatus())) {
+            if (topology.isMe(node) && ResponseUtils.is2XX(deleteMethod(key).getStatus())) {
                 count++;
             }
-            if (is2XX(proxy(node, request).getStatus())) {
+            if (ResponseUtils.is2XX(proxy(node, request).getStatus())) {
                 count++;
             }
         }
@@ -244,12 +225,6 @@ public class SimpleServer extends HttpServer implements Service {
         }
         return new Response(Response.ACCEPTED, Response.EMPTY);
     }
-
-
-    private boolean is2XX(final int code) {
-        return code <= 299 && code >= 200;
-    }
-
 
     /**
      * Range method.
@@ -310,19 +285,6 @@ public class SimpleServer extends HttpServer implements Service {
         });
     }
 
-    private Response valueToResponse(final Value value) {
-        if (value.state() == Value.State.PRESENT) {
-            final var response = Response.ok(Bytes.toArray(value.getData()));
-            response.addHeader(HEADER_TIME_STAMP + value.getTimeStamp());
-            return response;
-        } else if (value.state() == Value.State.REMOVED) {
-            final var response = new Response(Response.NOT_FOUND, Response.EMPTY);
-            response.addHeader(HEADER_TIME_STAMP + value.getTimeStamp());
-            return response;
-        }
-        return new Response(Response.NOT_FOUND, Response.EMPTY);
-    }
-
     private Response getMethod(final ByteBuffer key) throws IOException {
         final Value value;
         try {
@@ -333,7 +295,7 @@ public class SimpleServer extends HttpServer implements Service {
         if (value == null) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
         }
-        return valueToResponse(value);
+        return ResponseUtils.valueToResponse(value);
     }
 
     private Response putMethod(final ByteBuffer key, final Request request) throws IOException {
@@ -361,7 +323,7 @@ public class SimpleServer extends HttpServer implements Service {
 
     private Response proxy(@NotNull final String workerNode, @NotNull final Request request) {
         try {
-            request.addHeader(HEADER_PROXY);
+            request.addHeader(ResponseUtils.HEADER_PROXY);
             final HttpClient client = pool.get(workerNode);
             if (client == null) {
                 return new Response(Response.BAD_REQUEST, Response.EMPTY);
@@ -371,10 +333,6 @@ public class SimpleServer extends HttpServer implements Service {
             log.error("Request proxy error ", e);
             return new Response(Response.BAD_REQUEST, Response.EMPTY);
         }
-    }
-
-    static boolean isProxied(@NotNull final Request request) {
-        return request.getHeader(HEADER_PROXY) != null;
     }
 
     @FunctionalInterface
