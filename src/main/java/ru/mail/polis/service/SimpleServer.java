@@ -113,7 +113,9 @@ public class SimpleServer extends HttpServer implements Service {
         getFromSet(request, session, replicas, key);
     }
 
-    private void getLocal(@NotNull final Request request, @NotNull final HttpSession session, @NotNull final ByteBuffer key) {
+    private void getLocal(@NotNull final Request request,
+                          @NotNull final HttpSession session,
+                          @NotNull final ByteBuffer key) {
         switch (request.getMethod()) {
             case Request.METHOD_GET:
                 executeAsync(session, () -> getMethod(key));
@@ -131,7 +133,6 @@ public class SimpleServer extends HttpServer implements Service {
                 sendResponse(session, new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY));
         }
     }
-
 
     private void getFromSet(@NotNull final Request request,
                             @NotNull final HttpSession session,
