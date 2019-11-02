@@ -15,6 +15,13 @@ public final class Value implements Comparable<Value> {
     private static final AtomicInteger nano = new AtomicInteger();
     private static final int FACTOR = 1_000_000;
 
+    /**
+     * Value with state.
+     *
+     * @param state of value
+     * @param ts timestamp
+     * @param data bytebuffer
+     */
     public Value(State state, final long ts, final ByteBuffer data) {
         assert ts >= 0;
         this.state = state;
@@ -86,6 +93,11 @@ public final class Value implements Comparable<Value> {
         return state.toString() + ", ts=" + ts;
     }
 
+    /**
+     * Merge values by timestamp
+     * @param values list of values
+     * @return min value or absent
+     */
     @NotNull
     public static Value merge(@NotNull final Collection<Value> values) {
         return values.stream()

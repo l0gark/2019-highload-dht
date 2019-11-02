@@ -45,11 +45,6 @@ public class Node implements Topology<String> {
     }
 
     @Override
-    public String me() {
-        return name;
-    }
-
-    @Override
     public Set<String> primaryFor(final ByteBuffer key, final ReplicationFactor replicationFactor) {
         if (replicationFactor.getFrom() > nodes.length) {
             throw new IllegalArgumentException();

@@ -25,9 +25,15 @@ import ru.mail.polis.persistence.Value;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
 
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.concurrent.Executor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -145,7 +151,10 @@ public class SimpleServer extends HttpServer implements Service {
         }
     }
 
-    private void getFromSet(Request request, HttpSession session, String replicas, ByteBuffer key) {
+    private void getFromSet(@NotNull final Request request,
+                            @NotNull final HttpSession session,
+                            @NotNull final String replicas,
+                            @NotNull final ByteBuffer key) {
         ReplicationFactor replicationFactor;
         try {
             replicationFactor = replicas == null ? quorum : ReplicationFactor.fromString(replicas);
@@ -158,7 +167,7 @@ public class SimpleServer extends HttpServer implements Service {
         executeAsync(session, () -> {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
-                    List<Value> values = new ArrayList<>(nodes.size());
+                    final List<Value> values = new ArrayList<>(nodes.size());
                     for (final String node : nodes) {
                         Response response;
                         if (topology.isMe(node)) {
@@ -166,7 +175,7 @@ public class SimpleServer extends HttpServer implements Service {
                         } else {
                             response = proxy(node, request);
                         }
-                        if(response.getStatus() != 400){
+                        if (response.getStatus() != 400) {
                             values.add(responseToValue(response));
                         }
                     }
@@ -174,15 +183,13 @@ public class SimpleServer extends HttpServer implements Service {
                     if (values.size() < replicationFactor.getAck()) {
                         return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
                     }
-                    Value value = Value.merge(values);
+                    final Value value = Value.merge(values);
                     return valueToResponse(value);
                 case Request.METHOD_PUT:
                     int count = 0;
                     for (final String node : nodes) {
-                        if (topology.isMe(node)) {
-                            if (is2XX(putMethod(key, request).getStatus())) {
-                                count++;
-                            }
+                        if (topology.isMe(node) && is2XX(putMethod(key, request).getStatus())) {
+                            count++;
                         }
                         if (is2XX(proxy(node, request).getStatus())) {
                             count++;
@@ -197,10 +204,8 @@ public class SimpleServer extends HttpServer implements Service {
                 case Request.METHOD_DELETE:
                     count = 0;
                     for (final String node : nodes) {
-                        if (topology.isMe(node)) {
-                            if (is2XX(deleteMethod(key).getStatus())) {
-                                count++;
-                            }
+                        if (topology.isMe(node) && is2XX(deleteMethod(key).getStatus())) {
+                            count++;
                         }
                         if (is2XX(proxy(node, request).getStatus())) {
                             count++;
@@ -211,9 +216,9 @@ public class SimpleServer extends HttpServer implements Service {
                         return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
                     }
                     return new Response(Response.ACCEPTED, Response.EMPTY);
-
+                default:
+                    return new Response(Response.BAD_REQUEST, Response.EMPTY);
             }
-            return new Response(Response.BAD_REQUEST, Response.EMPTY);
         });
     }
 
@@ -333,8 +338,12 @@ public class SimpleServer extends HttpServer implements Service {
     private Response proxy(@NotNull final String workerNode, @NotNull final Request request) {
         try {
             request.addHeader(HEADER_PROXY);
-            return pool.get(workerNode).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException | IOException | NullPointerException e) {
+            HttpClient client = pool.get(workerNode);
+            if(client == null){
+                return new Response(Response.BAD_REQUEST, Response.EMPTY);
+            }
+            return client.invoke(request);
+        } catch (InterruptedException | PoolException | HttpException | IOException e) {
             log.error("Request proxy error ", e);
             return new Response(Response.BAD_REQUEST, Response.EMPTY);
         }
@@ -348,5 +357,4 @@ public class SimpleServer extends HttpServer implements Service {
     interface Action {
         Response act() throws IOException;
     }
-
 }
