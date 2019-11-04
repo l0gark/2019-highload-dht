@@ -129,6 +129,7 @@ public class SimpleServer extends HttpServer implements Service {
                 break;
             default:
                 sendResponse(session, new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY));
+                break;
         }
     }
 
@@ -145,19 +146,18 @@ public class SimpleServer extends HttpServer implements Service {
         }
         final Set<String> nodes = topology.primaryFor(key, replicationFactor);
 
-        switch (request.getMethod()) {
-            case Request.METHOD_GET:
-                executeAsync(session, () -> scheduleGetEntity(request, key, replicationFactor, nodes));
-                break;
-            case Request.METHOD_PUT:
-                executeAsync(session, () -> schedulePutEntity(request, key, replicationFactor, nodes));
-                break;
-            case Request.METHOD_DELETE:
-                executeAsync(session, () -> scheduleDeleteEntity(request, key, replicationFactor, nodes));
-                break;
-            default:
-                sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
-        }
+        executeAsync(session, () -> {
+            switch (request.getMethod()) {
+                case Request.METHOD_GET:
+                    return scheduleGetEntity(request, key, replicationFactor, nodes);
+                case Request.METHOD_PUT:
+                    return schedulePutEntity(request, key, replicationFactor, nodes);
+                case Request.METHOD_DELETE:
+                    return scheduleDeleteEntity(request, key, replicationFactor, nodes);
+                default:
+                    return new Response(Response.BAD_REQUEST, Response.EMPTY);
+            }
+        });
     }
 
     private Response scheduleGetEntity(@NotNull final Request request,

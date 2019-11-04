@@ -8,7 +8,7 @@ import ru.mail.polis.persistence.Bytes;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.PriorityQueue;
 import java.util.Set;
 
@@ -45,7 +45,7 @@ public class Node implements Topology<String> {
     }
 
     @Override
-    public Set<String> primaryFor(final ByteBuffer key, final ReplicationFactor replicationFactor) {
+    public Set<String> primaryFor(@NotNull final ByteBuffer key, @NotNull final ReplicationFactor replicationFactor) {
         if (replicationFactor.getFrom() > nodes.length) {
             throw new IllegalArgumentException();
         }
@@ -56,17 +56,36 @@ public class Node implements Topology<String> {
             final long hash1 = myHashCode(strKey, node1);
             final long hash2 = myHashCode(strKey, node2);
 
-            return Long.compare(hash1, hash2);
+            return Long.compare(hash2, hash1);
         });
 
         queue.addAll(Arrays.asList(nodes));
 
-        final Set<String> res = new HashSet<>(replicationFactor.getFrom() << 1);
+        final Set<String> list = new LinkedHashSet<>(replicationFactor.getFrom() << 1);
         for (int i = 0; i < replicationFactor.getFrom(); i++) {
-            res.add(queue.poll());
+            list.add(queue.poll());
         }
 
-        return res;
+        return list;
+    }
+
+    @Override
+    public String primaryFor(@NotNull final ByteBuffer key) {
+        final String strKey = Arrays.toString(Bytes.toArray(key));
+        String minNode = nodes[0];
+
+        for (int i = 1; i < nodes.length; i++) {
+            final String current = nodes[i];
+
+            final long minHash = myHashCode(strKey, minNode);
+            final long curHash = myHashCode(strKey, current);
+
+            if (minHash > curHash) {
+                minNode = current;
+            }
+        }
+
+        return minNode;
     }
 
     @Override
