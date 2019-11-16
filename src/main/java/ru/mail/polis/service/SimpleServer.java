@@ -24,14 +24,16 @@ import ru.mail.polis.persistence.Value;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static ru.mail.polis.service.LocalClient.sendResponse;
@@ -146,86 +148,125 @@ public class SimpleServer extends HttpServer implements Service {
         }
         final Set<String> nodes = topology.primaryFor(key, replicationFactor);
 
-        executeAsync(session, () -> {
-            switch (request.getMethod()) {
-                case Request.METHOD_GET:
-                    return scheduleGetEntity(request, key, replicationFactor, nodes);
-                case Request.METHOD_PUT:
-                    return schedulePutEntity(request, key, replicationFactor, nodes);
-                case Request.METHOD_DELETE:
-                    return scheduleDeleteEntity(request, key, replicationFactor, nodes);
-                default:
-                    return new Response(Response.BAD_REQUEST, Response.EMPTY);
+        switch (request.getMethod()) {
+            case Request.METHOD_GET:
+                scheduleGetEntity(session, request, key, replicationFactor, nodes);
+                break;
+            case Request.METHOD_PUT:
+                schedulePutEntity(session, request, key, replicationFactor, nodes);
+                break;
+            case Request.METHOD_DELETE:
+                scheduleDeleteEntity(session, request, key, replicationFactor, nodes);
+                break;
+            default:
+                sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+        }
+    }
+
+    private void scheduleGetEntity(
+            @NotNull final HttpSession session,
+            @NotNull final Request request,
+            @NotNull final ByteBuffer key,
+            @NotNull final ReplicationFactor replicationFactor,
+            @NotNull final Set<String> nodes) {
+
+        CompletableFuture.supplyAsync(() -> {
+            final Queue<Value> queue = new ConcurrentLinkedQueue<>();
+            for (final String node : nodes) {
+                Response response = null;
+                if (topology.isMe(node)) {
+                    try {
+                        response = LocalClient.getMethod(dao, key);
+                    } catch (IOException e) {
+                        log.error("Can`t read from drive", e);
+                    }
+                } else {
+                    response = proxy(node, request);
+                }
+
+                if (response != null && response.getStatus() != 400) {
+                    queue.add(ResponseUtils.responseToValue(response));
+                }
             }
+            return queue;
+        }, executor).thenAccept(queue -> {
+            if (queue.size() < replicationFactor.getAck()) {
+                sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                return;
+            }
+            final Value value = Value.merge(queue);
+            sendResponse(session, ResponseUtils.valueToResponse(value));
+        }).exceptionally(error -> {
+            log.error("Error in scheduleGet", error);
+            return null;
         });
     }
 
-    private Response scheduleGetEntity(@NotNull final Request request,
-                                       @NotNull final ByteBuffer key,
-                                       @NotNull final ReplicationFactor replicationFactor,
-                                       @NotNull final Set<String> nodes) throws IOException {
-        final List<Value> values = new ArrayList<>(nodes.size());
-        for (final String node : nodes) {
-            Response response;
-            if (topology.isMe(node)) {
-                response = LocalClient.getMethod(dao, key);
-            } else {
-                response = proxy(node, request);
-            }
-            if (response.getStatus() != 400) {
-                values.add(ResponseUtils.responseToValue(response));
-            }
-        }
-
-        if (values.size() < replicationFactor.getAck()) {
-            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-        }
-        final Value value = Value.merge(values);
-        return ResponseUtils.valueToResponse(value);
-    }
-
-    private Response schedulePutEntity(@NotNull final Request request,
-                                       @NotNull final ByteBuffer key,
-                                       @NotNull final ReplicationFactor replicationFactor,
-                                       @NotNull final Set<String> nodes) throws IOException {
-        int count = 0;
-        for (final String node : nodes) {
-            if (ResponseUtils.is2XX(proxy(node, request))) {
-                count++;
-            } else if (topology.isMe(node)) {
-                final Response response = LocalClient.putMethod(dao, key, request);
-                if (ResponseUtils.is2XX(response)) {
-                    count++;
+    private void schedulePutEntity(
+            @NotNull final HttpSession session,
+            @NotNull final Request request,
+            @NotNull final ByteBuffer key,
+            @NotNull final ReplicationFactor replicationFactor,
+            @NotNull final Set<String> nodes) {
+        final AtomicInteger count = new AtomicInteger(0);
+        CompletableFuture.runAsync(() -> {
+            for (final String node : nodes) {
+                if (ResponseUtils.is2XX(proxy(node, request))) {
+                    count.incrementAndGet();
+                } else if (topology.isMe(node)) {
+                    try {
+                        final Response response = LocalClient.putMethod(dao, key, request);
+                        if (ResponseUtils.is2XX(response)) {
+                            count.incrementAndGet();
+                        }
+                    } catch (IOException e) {
+                        log.error(":(", e);
+                    }
                 }
             }
-        }
-
-        if (count < replicationFactor.getAck()) {
-            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-        }
-        return new Response(Response.CREATED, Response.EMPTY);
+        }, executor).thenAccept(v -> {
+            if (count.get() < replicationFactor.getAck()) {
+                sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                return;
+            }
+            sendResponse(session, new Response(Response.CREATED, Response.EMPTY));
+        }).exceptionally(error -> {
+            log.error("Error in schedulePut", error);
+            return null;
+        });
     }
 
-    private Response scheduleDeleteEntity(@NotNull final Request request,
-                                          @NotNull final ByteBuffer key,
-                                          @NotNull final ReplicationFactor replicationFactor,
-                                          @NotNull final Set<String> nodes) throws IOException {
-        int count = 0;
-        for (final String node : nodes) {
-            if (ResponseUtils.is2XX(proxy(node, request))) {
-                count++;
-            } else if (topology.isMe(node)) {
-                final Response response = LocalClient.deleteMethod(dao, key);
-                if (ResponseUtils.is2XX(response)) {
-                    count++;
+    private void scheduleDeleteEntity(@NotNull final HttpSession session,
+                                      @NotNull final Request request,
+                                      @NotNull final ByteBuffer key,
+                                      @NotNull final ReplicationFactor replicationFactor,
+                                      @NotNull final Set<String> nodes) {
+        final AtomicInteger count = new AtomicInteger(0);
+        CompletableFuture.runAsync(() -> {
+            for (final String node : nodes) {
+                if (ResponseUtils.is2XX(proxy(node, request))) {
+                    count.incrementAndGet();
+                } else if (topology.isMe(node)) {
+                    try {
+                        final Response response = LocalClient.deleteMethod(dao, key);
+                        if (ResponseUtils.is2XX(response)) {
+                            count.incrementAndGet();
+                        }
+                    } catch (IOException e) {
+                        log.error("Error was thrown while read from drive", e);
+                    }
                 }
             }
-        }
-
-        if (count < replicationFactor.getAck()) {
-            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-        }
-        return new Response(Response.ACCEPTED, Response.EMPTY);
+        }, executor).thenAccept(v -> {
+            if (count.get() < replicationFactor.getAck()) {
+                sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                return;
+            }
+            sendResponse(session, new Response(Response.ACCEPTED, Response.EMPTY));
+        }).exceptionally(error -> {
+            log.error("Error in scheduleDelete", error);
+            return null;
+        });
     }
 
     /**
@@ -254,8 +295,8 @@ public class SimpleServer extends HttpServer implements Service {
     }
 
     @Override
-    public void handleDefault(final Request request, final HttpSession session) throws IOException {
-        session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
+    public void handleDefault(final Request request, final HttpSession session) {
+        sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
     }
 
     @Override
