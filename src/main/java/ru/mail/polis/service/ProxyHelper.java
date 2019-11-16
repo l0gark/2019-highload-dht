@@ -52,11 +52,7 @@ final class ProxyHelper {
             for (final String node : data.nodes) {
                 Response response = null;
                 if (topology.isMe(node)) {
-                    try {
-                        response = LocalClient.getMethod(dao, data.key);
-                    } catch (IOException e) {
-                        log.error("Can`t read from drive", e);
-                    }
+                    response = LocalClient.getMethod(dao, data.key);
                 } else {
                     response = proxy(node, data.request);
                 }
@@ -87,14 +83,11 @@ final class ProxyHelper {
             for (final String node : data.nodes) {
                 if (ResponseUtils.is2XX(proxy(node, data.request))) {
                     count.incrementAndGet();
+
                 } else if (topology.isMe(node)) {
-                    try {
-                        final Response response = LocalClient.putMethod(dao, data.key, data.request);
-                        if (ResponseUtils.is2XX(response)) {
-                            count.incrementAndGet();
-                        }
-                    } catch (IOException e) {
-                        log.error(":(", e);
+                    final Response response = LocalClient.putMethod(dao, data.key, data.request);
+                    if (ResponseUtils.is2XX(response)) {
+                        count.incrementAndGet();
                     }
                 }
             }
@@ -118,13 +111,9 @@ final class ProxyHelper {
                 if (ResponseUtils.is2XX(proxy(node, data.request))) {
                     count.incrementAndGet();
                 } else if (topology.isMe(node)) {
-                    try {
-                        final Response response = LocalClient.deleteMethod(dao, data.key);
-                        if (ResponseUtils.is2XX(response)) {
-                            count.incrementAndGet();
-                        }
-                    } catch (IOException e) {
-                        log.error("Error was thrown while read from drive", e);
+                    final Response response = LocalClient.deleteMethod(dao, data.key);
+                    if (ResponseUtils.is2XX(response)) {
+                        count.incrementAndGet();
                     }
                 }
             }

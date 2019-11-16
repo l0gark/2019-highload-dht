@@ -19,12 +19,15 @@ final class LocalClient {
     private LocalClient() {
     }
 
-    static Response getMethod(final DAO dao, final ByteBuffer key) throws IOException {
+    static Response getMethod(final DAO dao, final ByteBuffer key) {
         final Value value;
         try {
             value = dao.getValue(key);
         } catch (NoSuchElemLite e) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
+        } catch (IOException e) {
+            log.error("Error while put to dao", e);
+            return new Response(Response.BAD_REQUEST, Response.EMPTY);
         }
         if (value == null) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
@@ -32,13 +35,25 @@ final class LocalClient {
         return ResponseUtils.valueToResponse(value);
     }
 
-    static Response putMethod(final DAO dao, final ByteBuffer key, final Request request) throws IOException {
-        dao.upsert(key, ByteBuffer.wrap(request.getBody()));
+    static Response putMethod(final DAO dao, final ByteBuffer key, final Request request) {
+        try {
+            dao.upsert(key, ByteBuffer.wrap(request.getBody()));
+        } catch (IOException e) {
+            log.error("Error while put to dao", e);
+            return new Response(Response.BAD_REQUEST, Response.EMPTY);
+
+        }
         return new Response(Response.CREATED, Response.EMPTY);
     }
 
-    static Response deleteMethod(final DAO dao, final ByteBuffer key) throws IOException {
-        dao.remove(key);
+    @NotNull
+    static Response deleteMethod(final DAO dao, final ByteBuffer key) {
+        try {
+            dao.remove(key);
+        } catch (IOException e) {
+            log.error("Error while delete from dao", e);
+            return new Response(Response.BAD_REQUEST, Response.EMPTY);
+        }
         return new Response(Response.OK, Response.EMPTY);
     }
 
