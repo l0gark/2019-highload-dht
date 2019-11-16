@@ -45,23 +45,20 @@ final class ProxyHelper {
 
     void scheduleGetEntity(
             @NotNull final HttpSession session,
-            @NotNull final Request request,
-            @NotNull final ByteBuffer key,
-            @NotNull final ReplicationFactor rf,
-            @NotNull final Set<String> nodes) {
+            @NotNull final RequestData data) {
 
         CompletableFuture.supplyAsync(() -> {
             final Queue<Value> queue = new ConcurrentLinkedQueue<>();
-            for (final String node : nodes) {
+            for (final String node : data.nodes) {
                 Response response = null;
                 if (topology.isMe(node)) {
                     try {
-                        response = LocalClient.getMethod(dao, key);
+                        response = LocalClient.getMethod(dao, data.key);
                     } catch (IOException e) {
                         log.error("Can`t read from drive", e);
                     }
                 } else {
-                    response = proxy(node, request);
+                    response = proxy(node, data.request);
                 }
 
                 if (response != null && response.getStatus() != 400) {
@@ -70,7 +67,7 @@ final class ProxyHelper {
             }
             return queue;
         }, executor).thenAccept(queue -> {
-            if (queue.size() < rf.getAck()) {
+            if (queue.size() < data.rf.getAck()) {
                 sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                 return;
             }
@@ -84,18 +81,15 @@ final class ProxyHelper {
 
     void schedulePutEntity(
             @NotNull final HttpSession session,
-            @NotNull final Request request,
-            @NotNull final ByteBuffer key,
-            @NotNull final ReplicationFactor rf,
-            @NotNull final Set<String> nodes) {
+            @NotNull final RequestData data) {
         final AtomicInteger count = new AtomicInteger(0);
         CompletableFuture.runAsync(() -> {
-            for (final String node : nodes) {
-                if (ResponseUtils.is2XX(proxy(node, request))) {
+            for (final String node : data.nodes) {
+                if (ResponseUtils.is2XX(proxy(node, data.request))) {
                     count.incrementAndGet();
                 } else if (topology.isMe(node)) {
                     try {
-                        final Response response = LocalClient.putMethod(dao, key, request);
+                        final Response response = LocalClient.putMethod(dao, data.key, data.request);
                         if (ResponseUtils.is2XX(response)) {
                             count.incrementAndGet();
                         }
@@ -105,7 +99,7 @@ final class ProxyHelper {
                 }
             }
         }, executor).thenAccept(v -> {
-            if (count.get() < rf.getAck()) {
+            if (count.get() < data.rf.getAck()) {
                 sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                 return;
             }
@@ -117,18 +111,15 @@ final class ProxyHelper {
     }
 
     void scheduleDeleteEntity(@NotNull final HttpSession session,
-                              @NotNull final Request request,
-                              @NotNull final ByteBuffer key,
-                              @NotNull final ReplicationFactor rf,
-                              @NotNull final Set<String> nodes) {
+                              @NotNull final RequestData data) {
         final AtomicInteger count = new AtomicInteger(0);
         CompletableFuture.runAsync(() -> {
-            for (final String node : nodes) {
-                if (ResponseUtils.is2XX(proxy(node, request))) {
+            for (final String node : data.nodes) {
+                if (ResponseUtils.is2XX(proxy(node, data.request))) {
                     count.incrementAndGet();
                 } else if (topology.isMe(node)) {
                     try {
-                        final Response response = LocalClient.deleteMethod(dao, key);
+                        final Response response = LocalClient.deleteMethod(dao, data.key);
                         if (ResponseUtils.is2XX(response)) {
                             count.incrementAndGet();
                         }
@@ -138,7 +129,7 @@ final class ProxyHelper {
                 }
             }
         }, executor).thenAccept(v -> {
-            if (count.get() < rf.getAck()) {
+            if (count.get() < data.rf.getAck()) {
                 sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                 return;
             }
@@ -160,6 +151,23 @@ final class ProxyHelper {
         } catch (InterruptedException | PoolException | HttpException | IOException e) {
             log.error("Request proxy error ", e);
             return new Response(Response.BAD_REQUEST, Response.EMPTY);
+        }
+    }
+
+    static class RequestData {
+        final Request request;
+        final ByteBuffer key;
+        final ReplicationFactor rf;
+        final Set<String> nodes;
+
+        RequestData(@NotNull final Request request,
+                    @NotNull final ByteBuffer key,
+                    @NotNull final ReplicationFactor rf,
+                    @NotNull final Set<String> nodes) {
+            this.request = request;
+            this.key = key;
+            this.rf = rf;
+            this.nodes = nodes;
         }
     }
 }

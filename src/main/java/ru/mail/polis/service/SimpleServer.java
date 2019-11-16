@@ -41,6 +41,7 @@ public class SimpleServer extends HttpServer implements Service {
     private final ReplicationFactor quorum;
 
     private final ProxyHelper proxyHelper;
+
     /**
      * Simple implementation of Service.
      *
@@ -59,7 +60,7 @@ public class SimpleServer extends HttpServer implements Service {
         this.topology = topology;
 
         final Set<String> nodes = topology.all();
-        Map<String, HttpClient> pool = new HashMap<>(nodes.size() << 1);
+        final Map<String, HttpClient> pool = new HashMap<>(nodes.size() << 1);
         for (final String name : nodes) {
             if (!this.topology.isMe(name)) {
                 pool.put(name, new HttpClient(new ConnectionString(name + "?timeout=100")));
@@ -142,15 +143,17 @@ public class SimpleServer extends HttpServer implements Service {
         }
         final Set<String> nodes = topology.primaryFor(key, replicationFactor);
 
+        final ProxyHelper.RequestData data = new ProxyHelper.RequestData(request, key, replicationFactor, nodes);
+
         switch (request.getMethod()) {
             case Request.METHOD_GET:
-                proxyHelper.scheduleGetEntity(session, request, key, replicationFactor, nodes);
+                proxyHelper.scheduleGetEntity(session, data);
                 break;
             case Request.METHOD_PUT:
-                proxyHelper.schedulePutEntity(session, request, key, replicationFactor, nodes);
+                proxyHelper.schedulePutEntity(session, data);
                 break;
             case Request.METHOD_DELETE:
-                proxyHelper.scheduleDeleteEntity(session, request, key, replicationFactor, nodes);
+                proxyHelper.scheduleDeleteEntity(session, data);
                 break;
             default:
                 sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
