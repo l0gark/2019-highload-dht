@@ -157,6 +157,7 @@ public class SimpleServer extends HttpServer implements Service {
                 break;
             default:
                 sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+                break;
         }
     }
 
