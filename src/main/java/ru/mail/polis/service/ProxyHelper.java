@@ -32,7 +32,6 @@ final class ProxyHelper {
     private final Executor executor;
     private final Map<String, HttpClient> pool;
 
-
     ProxyHelper(@NotNull final Topology<String> topology,
                 @NotNull final DAO dao,
                 @NotNull final Executor executor,
