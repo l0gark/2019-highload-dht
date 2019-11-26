@@ -147,13 +147,13 @@ public class SimpleServer extends HttpServer implements Service {
 
         switch (request.getMethod()) {
             case Request.METHOD_GET:
-                proxyHelper.scheduleGetEntity(session, data);
+                executeAsync(() -> proxyHelper.scheduleGetEntity(session, data));
                 break;
             case Request.METHOD_PUT:
-                proxyHelper.schedulePutEntity(session, data);
+                executeAsync(() -> proxyHelper.schedulePutEntity(session, data));
                 break;
             case Request.METHOD_DELETE:
-                proxyHelper.scheduleDeleteEntity(session, data);
+                executeAsync(() -> proxyHelper.scheduleDeleteEntity(session, data));
                 break;
             default:
                 sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
@@ -218,6 +218,10 @@ public class SimpleServer extends HttpServer implements Service {
                 log.error("Execute exception", e);
             }
         });
+    }
+
+    private void executeAsync(@NotNull final Runnable action) {
+        executor.execute(action);
     }
 
     @FunctionalInterface
