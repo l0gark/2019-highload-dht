@@ -20,7 +20,10 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static ru.mail.polis.service.LocalClient.sendResponse;
 
@@ -49,7 +52,7 @@ final class ProxyHelper {
         CompletableFuture.supplyAsync(() -> {
             final Queue<Value> queue = new ConcurrentLinkedQueue<>();
             for (final String node : data.nodes) {
-                Response response = null;
+                Response response;
                 if (topology.isMe(node)) {
                     response = LocalClient.getMethod(dao, data.key);
                 } else {
@@ -102,28 +105,67 @@ final class ProxyHelper {
         });
     }
 
+//    void scheduleDeleteEntity(@NotNull final HttpSession session,
+//                              @NotNull final RequestData data) {
+//        final AtomicInteger count = new AtomicInteger(0);
+//        CompletableFuture.runAsync(() -> {
+//            for (final String node : data.nodes) {
+//                if (ResponseUtils.is2XX(proxy(node, data.request))) {
+//                    count.incrementAndGet();
+//                } else if (topology.isMe(node)) {
+//                    final Response response = LocalClient.deleteMethod(dao, data.key);
+//                    if (ResponseUtils.is2XX(response)) {
+//                        count.incrementAndGet();
+//                    }
+//                }
+//            }
+//        }, executor).thenAccept(v -> {
+//            if (count.get() < data.rf.getAck()) {
+//                sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+//                return;
+//            }
+//            sendResponse(session, new Response(Response.ACCEPTED, Response.EMPTY));
+//        }).exceptionally(error -> {
+//            log.error("Error in scheduleDelete", error);
+//            return null;
+//        });
+//    }
+
     void scheduleDeleteEntity(@NotNull final HttpSession session,
-                              @NotNull final RequestData data) {
-        final AtomicInteger count = new AtomicInteger(0);
+                               @NotNull final RequestData data) {
         CompletableFuture.runAsync(() -> {
+            final AtomicInteger goodCount = new AtomicInteger(0);
+            final AtomicInteger doneCount = new AtomicInteger(0);
+            final AtomicBoolean sessionSent = new AtomicBoolean(false);
+
             for (final String node : data.nodes) {
-                if (ResponseUtils.is2XX(proxy(node, data.request))) {
-                    count.incrementAndGet();
-                } else if (topology.isMe(node)) {
-                    final Response response = LocalClient.deleteMethod(dao, data.key);
-                    if (ResponseUtils.is2XX(response)) {
-                        count.incrementAndGet();
+                CompletableFuture.runAsync(() -> {
+                    if (ResponseUtils.is2XX(proxy(node, data.request))) {
+                        goodCount.incrementAndGet();
+                    } else if (topology.isMe(node)) {
+                        final Response response = LocalClient.deleteMethod(dao, data.key);
+                        if (ResponseUtils.is2XX(response)) {
+                            goodCount.incrementAndGet();
+                        }
                     }
-                }
+                    doneCount.incrementAndGet();
+                }, executor).thenAccept(v -> {
+                    if (!sessionSent.get()) {
+                        if (goodCount.get() >= data.rf.getAck()) {
+                            sendResponse(session, new Response(Response.ACCEPTED, Response.EMPTY));
+                            sessionSent.set(true);
+                        } else if (doneCount.get() - goodCount.get() > data.rf.getFrom() - data.rf.getAck()) {
+                            sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                            sessionSent.set(true);
+                        }
+                    }
+                }).exceptionally(e -> {
+                    log.error(":(", e);
+                    return null;
+                });
             }
-        }, executor).thenAccept(v -> {
-            if (count.get() < data.rf.getAck()) {
-                sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                return;
-            }
-            sendResponse(session, new Response(Response.ACCEPTED, Response.EMPTY));
-        }).exceptionally(error -> {
-            log.error("Error in scheduleDelete", error);
+        }).exceptionally(e -> {
+            log.error(":(", e);
             return null;
         });
     }
