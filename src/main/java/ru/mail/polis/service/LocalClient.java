@@ -69,4 +69,9 @@ final class LocalClient {
             }
         }
     }
+
+    static void sendResponse(@NotNull final HttpSession session,
+                             @NotNull final String status) {
+        sendResponse(session, new Response(status, Response.EMPTY));
+    }
 }

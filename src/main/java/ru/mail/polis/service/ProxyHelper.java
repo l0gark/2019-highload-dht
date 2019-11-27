@@ -66,20 +66,15 @@ final class ProxyHelper {
 
                 doneCount.incrementAndGet();
             }, executor).thenAccept(v -> {
-                if (!sessionSent.get()) {
-                    if (queue.size() >= data.rf.getAck()) {
-                        final Value value = Value.merge(queue);
-                        sendResponse(session, ResponseUtils.valueToResponse(value));
-                        sessionSent.set(true);
-                    } else if (doneCount.get() - queue.size() > data.rf.getFrom() - data.rf.getAck()) {
-                        sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                        sessionSent.set(true);
-                    }
+                if (!sessionSent.get() && queue.size() >= data.rf.getAck()) {
+                    final Value value = Value.merge(queue);
+                    sendResponse(session, ResponseUtils.valueToResponse(value));
+                    sessionSent.set(true);
+                } else if (!sessionSent.get() && doneCount.get() - queue.size() > data.rf.getFrom() - data.rf.getAck()) {
+                    sendResponse(session, Response.GATEWAY_TIMEOUT);
+                    sessionSent.set(true);
                 }
-            }).exceptionally(e -> {
-                log.error("Error in scheduleGet", e);
-                return null;
-            });
+            }).exceptionally(e -> catching("Error in scheduleGet", e));
         }
     }
 
@@ -101,21 +96,20 @@ final class ProxyHelper {
                     }
                 }
                 doneCount.incrementAndGet();
-            }, executor).thenAccept(v -> {
-                if (!sessionSent.get()) {
-                    if (goodCount.get() >= data.rf.getAck()) {
-                        sendResponse(session, new Response(Response.CREATED, Response.EMPTY));
-                        sessionSent.set(true);
-                    } else if (doneCount.get() - goodCount.get() > data.rf.getFrom() - data.rf.getAck()) {
-                        sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                        sessionSent.set(true);
-                    }
-                }
-            }).exceptionally(e -> {
-                log.error("Error in schedulePut", e);
-                return null;
-            });
+            }, executor).thenAccept(v -> assessmentChangedMethods(
+                    session,
+                    sessionSent,
+                    goodCount,
+                    doneCount,
+                    data.rf,
+                    Response.CREATED
+            )).exceptionally(e -> catching("Error in schedulePut", e));
         }
+    }
+
+    private Void catching(final String msg, final Throwable e) {
+        log.error(msg, e);
+        return null;
     }
 
     void scheduleDeleteEntity(@NotNull final HttpSession session,
@@ -135,20 +129,14 @@ final class ProxyHelper {
                     }
                 }
                 doneCount.incrementAndGet();
-            }, executor).thenAccept(v -> {
-                if (!sessionSent.get()) {
-                    if (goodCount.get() >= data.rf.getAck()) {
-                        sendResponse(session, new Response(Response.ACCEPTED, Response.EMPTY));
-                        sessionSent.set(true);
-                    } else if (doneCount.get() - goodCount.get() > data.rf.getFrom() - data.rf.getAck()) {
-                        sendResponse(session, new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                        sessionSent.set(true);
-                    }
-                }
-            }).exceptionally(e -> {
-                log.error("Error in scheduleDelete", e);
-                return null;
-            });
+            }, executor).thenAccept(v -> assessmentChangedMethods(
+                    session,
+                    sessionSent,
+                    goodCount,
+                    doneCount,
+                    data.rf,
+                    Response.ACCEPTED
+            )).exceptionally(e -> catching("Error in scheduleDelete", e));
         }
     }
 
@@ -159,10 +147,29 @@ final class ProxyHelper {
             if (client == null) {
                 return new Response(Response.BAD_REQUEST, Response.EMPTY);
             }
+
+
             return client.invoke(request);
         } catch (InterruptedException | PoolException | HttpException | IOException e) {
             log.error("Request proxy error ", e);
             return new Response(Response.BAD_REQUEST, Response.EMPTY);
+        }
+    }
+
+    private void assessmentChangedMethods(final @NotNull HttpSession session,
+                                          final @NotNull AtomicBoolean sessionSent,
+                                          final @NotNull AtomicInteger goodCount,
+                                          final @NotNull AtomicInteger doneCount,
+                                          final @NotNull ReplicationFactor rf,
+                                          final @NotNull String status) {
+        if (!sessionSent.get()) {
+            if (goodCount.get() >= rf.getAck()) {
+                sendResponse(session, status);
+                sessionSent.set(true);
+            } else if (doneCount.get() - goodCount.get() > rf.getFrom() - rf.getAck()) {
+                sendResponse(session, Response.GATEWAY_TIMEOUT);
+                sessionSent.set(true);
+            }
         }
     }
 
