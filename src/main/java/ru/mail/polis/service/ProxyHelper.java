@@ -149,7 +149,7 @@ final class ProxyHelper {
                 );
 
                 if (status == GOOD) {
-                    sendResponse(session, Response.CREATED);
+                    sendResponse(session, Response.ACCEPTED);
                 } else if (status == GATE_WAY) {
                     sendResponse(session, Response.GATEWAY_TIMEOUT);
                 }

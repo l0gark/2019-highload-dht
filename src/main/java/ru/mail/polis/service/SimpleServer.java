@@ -94,7 +94,7 @@ public class SimpleServer extends HttpServer implements Service {
                            @Param("replicas") final String replicas,
                            final HttpSession session) {
         if (id == null || id.isEmpty()) {
-            sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+            sendResponse(session, Response.BAD_REQUEST);
             return;
         }
 
@@ -125,7 +125,7 @@ public class SimpleServer extends HttpServer implements Service {
                 });
                 break;
             default:
-                sendResponse(session, new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY));
+                sendResponse(session, Response.METHOD_NOT_ALLOWED);
                 break;
         }
     }
@@ -138,7 +138,7 @@ public class SimpleServer extends HttpServer implements Service {
         try {
             replicationFactor = replicas == null ? quorum : ReplicationFactor.fromString(replicas);
         } catch (IllegalArgumentException e) {
-            sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+            sendResponse(session, Response.BAD_REQUEST);
             return;
         }
         final Set<String> nodes = topology.primaryFor(key, replicationFactor);
@@ -156,7 +156,7 @@ public class SimpleServer extends HttpServer implements Service {
                 executeAsync(() -> proxyHelper.scheduleDeleteEntity(session, data));
                 break;
             default:
-                sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+                sendResponse(session, Response.BAD_REQUEST);
                 break;
         }
     }
@@ -173,7 +173,7 @@ public class SimpleServer extends HttpServer implements Service {
     public void entities(final Request request, final HttpSession session, @Param("start") final String start,
                          @Param("end") final String end) {
         if (start == null || start.isEmpty()) {
-            sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+            sendResponse(session, Response.BAD_REQUEST);
             return;
         }
 
@@ -188,7 +188,7 @@ public class SimpleServer extends HttpServer implements Service {
 
     @Override
     public void handleDefault(final Request request, final HttpSession session) {
-        sendResponse(session, new Response(Response.BAD_REQUEST, Response.EMPTY));
+        sendResponse(session, Response.BAD_REQUEST);
     }
 
     @Override
@@ -213,7 +213,7 @@ public class SimpleServer extends HttpServer implements Service {
             try {
                 sendResponse(session, action.act());
             } catch (NoSuchElementException e) {
-                sendResponse(session, new Response(Response.NOT_FOUND, Response.EMPTY));
+                sendResponse(session, Response.NOT_FOUND);
             } catch (IOException e) {
                 log.error("Execute exception", e);
             }
