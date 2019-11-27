@@ -27,6 +27,9 @@ import static ru.mail.polis.service.LocalClient.sendResponse;
 
 final class ProxyHelper {
     private static final Logger log = LoggerFactory.getLogger(ProxyHelper.class);
+    private static final int GOOD = 1;
+    private static final int GATE_WAY = 2;
+    private static final int NOTHING = 3;
 
     private final Topology<String> topology;
     private final DAO dao;
@@ -50,6 +53,7 @@ final class ProxyHelper {
         final Queue<Value> queue = new ConcurrentLinkedQueue<>();
         final AtomicInteger doneCount = new AtomicInteger(0);
         final AtomicBoolean sessionSent = new AtomicBoolean(false);
+        final ReplicationFactor rf = data.rf;
 
         for (final String node : data.nodes) {
             CompletableFuture.runAsync(() -> {
@@ -66,11 +70,11 @@ final class ProxyHelper {
 
                 doneCount.incrementAndGet();
             }, executor).thenAccept(v -> {
-                if (!sessionSent.get() && queue.size() >= data.rf.getAck()) {
+                if (!sessionSent.get() && queue.size() >= rf.getAck()) {
                     final Value value = Value.merge(queue);
                     sendResponse(session, ResponseUtils.valueToResponse(value));
                     sessionSent.set(true);
-                } else if (!sessionSent.get() && doneCount.get() - queue.size() > data.rf.getFrom() - data.rf.getAck()) {
+                } else if (!sessionSent.get() && doneCount.get() - queue.size() > rf.getFrom() - rf.getAck()) {
                     sendResponse(session, Response.GATEWAY_TIMEOUT);
                     sessionSent.set(true);
                 }
@@ -96,14 +100,21 @@ final class ProxyHelper {
                     }
                 }
                 doneCount.incrementAndGet();
-            }, executor).thenAccept(v -> assessmentChangedMethods(
-                    session,
-                    sessionSent,
-                    goodCount,
-                    doneCount,
-                    data.rf,
-                    Response.CREATED
-            )).exceptionally(e -> catching("Error in schedulePut", e));
+            }, executor).thenAccept(v -> {
+                int status = assessmentChangedMethods(
+                        sessionSent,
+                        goodCount,
+                        doneCount,
+                        data.rf
+                );
+
+                if (status == GOOD) {
+                    sendResponse(session, Response.CREATED);
+                } else if (status == GATE_WAY) {
+                    sendResponse(session, Response.GATEWAY_TIMEOUT);
+                }
+
+            }).exceptionally(e -> catching("Error in schedulePut", e));
         }
     }
 
@@ -129,14 +140,21 @@ final class ProxyHelper {
                     }
                 }
                 doneCount.incrementAndGet();
-            }, executor).thenAccept(v -> assessmentChangedMethods(
-                    session,
-                    sessionSent,
-                    goodCount,
-                    doneCount,
-                    data.rf,
-                    Response.ACCEPTED
-            )).exceptionally(e -> catching("Error in scheduleDelete", e));
+            }, executor).thenAccept(v -> {
+                int status = assessmentChangedMethods(
+                        sessionSent,
+                        goodCount,
+                        doneCount,
+                        data.rf
+                );
+
+                if (status == GOOD) {
+                    sendResponse(session, Response.CREATED);
+                } else if (status == GATE_WAY) {
+                    sendResponse(session, Response.GATEWAY_TIMEOUT);
+                }
+
+            }).exceptionally(e -> catching("Error in scheduleDelete", e));
         }
     }
 
@@ -148,7 +166,6 @@ final class ProxyHelper {
                 return new Response(Response.BAD_REQUEST, Response.EMPTY);
             }
 
-
             return client.invoke(request);
         } catch (InterruptedException | PoolException | HttpException | IOException e) {
             log.error("Request proxy error ", e);
@@ -156,21 +173,21 @@ final class ProxyHelper {
         }
     }
 
-    private void assessmentChangedMethods(final @NotNull HttpSession session,
-                                          final @NotNull AtomicBoolean sessionSent,
-                                          final @NotNull AtomicInteger goodCount,
-                                          final @NotNull AtomicInteger doneCount,
-                                          final @NotNull ReplicationFactor rf,
-                                          final @NotNull String status) {
+    private int assessmentChangedMethods(
+            final @NotNull AtomicBoolean sessionSent,
+            final @NotNull AtomicInteger goodCount,
+            final @NotNull AtomicInteger doneCount,
+            final @NotNull ReplicationFactor rf) {
         if (!sessionSent.get()) {
             if (goodCount.get() >= rf.getAck()) {
-                sendResponse(session, status);
                 sessionSent.set(true);
+                return GOOD;
             } else if (doneCount.get() - goodCount.get() > rf.getFrom() - rf.getAck()) {
-                sendResponse(session, Response.GATEWAY_TIMEOUT);
                 sessionSent.set(true);
+                return GATE_WAY;
             }
         }
+        return NOTHING;
     }
 
     static class RequestData {
